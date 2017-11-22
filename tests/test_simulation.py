@@ -2,6 +2,7 @@ import unittest
 
 from dassp.core.structures import Haplotype, Segment, Position, Strand, PositionType
 from dassp.simulation.parts import ChromosomeGenerator, reverse_segment, delete_segments, duplicate_segments, translocation_segments, reverse_segments
+from simulation.manager import SimulationManager, generate_mutated_genome
 
 
 class ChromosomeGeneratorTestCase(unittest.TestCase):
@@ -261,3 +262,18 @@ class ReversalTestCase(OperationTestCase):
     def test_full_chromosomal_reversal(self):
         new_chr = reverse_segments(chromosome=self.chromosome, start_segment_index=0, end_segment_index=len(self.chromosome))
         self.assertListEqual([s.idx for s in new_chr], [reverse_segment(s).idx for s in self.chromosome[::-1]])
+
+
+class SimulationManagerTestCase(unittest.TestCase):
+    def setUp(self):
+        pass
+
+    def test_generate_mutated_genome_3_ab_chromosomes_no_translocation_in_the_mutation_config(self):
+        self.genome = ChromosomeGenerator.generate_chromosomes(chromosomes_cnt=3, ab=True, chromosome_size=100)
+        history = generate_mutated_genome(starting_genome=self.genome, mutation_cnt=9)
+        self.assertEqual(len(history["genomes"]), 10)
+        self.assertEqual(len(history["mutations"]), 9)
+        for genome in history["genomes"]:
+            for chromosome in genome:
+                self.assertTrue(len(chromosome) > 0)
+

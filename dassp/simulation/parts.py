@@ -1,4 +1,5 @@
 from copy import deepcopy
+from enum import Enum
 
 from dassp.core.structures import Haplotype, Position, Strand, PositionType, Segment
 
@@ -13,7 +14,7 @@ class ChromosomeGenerator(object):
                              chromosomes_cnt=CHROMOSOMES_CNT,
                              ab=True):
         result = []
-        for chr_cnt in range(chromosomes_cnt):
+        for chr_cnt in range(1, chromosomes_cnt+1):
             a_chromosome = cls.generate_chromosome(chromosome_size=chromosome_size, chr_name=str(chr_cnt))
             result.append(a_chromosome)
             if ab:
@@ -106,3 +107,16 @@ def translocation_segments(chromosome1,
         new_chr1 = chr1_beg + reverse_segments(chromosome=chr2_beg, start_segment_index=0, end_segment_index=len(chr2_beg))
         new_chr2 = reverse_segments(chromosome=chr1_end, start_segment_index=0, end_segment_index=len(chr1_end)) + chr2_end
     return new_chr1, new_chr2
+
+
+class MutationType(Enum):
+    DELETION = 0
+    DUPLICATION = 1
+    REVERSAL = 2
+    TRANSLOCATION = 3
+
+
+class Mutation(object):
+    def __init__(self, mutation_type, mutation_data):
+        self.mutation_type = mutation_type
+        self.mutation_data = mutation_data
