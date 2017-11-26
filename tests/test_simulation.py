@@ -1,8 +1,8 @@
 import unittest
 
-from dassp.core.structures import Haplotype, Segment, Position, Strand, PositionType
+from dassp.core.structures import Haplotype, Segment, Position, Strand, PositionType, AdjacencyType
 from dassp.simulation.parts import ChromosomeGenerator, reverse_segment, delete_segments, duplicate_segments, translocation_segments, reverse_segments
-from simulation.manager import SimulationManager, generate_mutated_genome
+from simulation.manager import SimulationManager, generate_mutated_genome, get_adjacencies_from_genome, get_scn_profile_from_genome
 
 
 class ChromosomeGeneratorTestCase(unittest.TestCase):
@@ -276,4 +276,44 @@ class SimulationManagerTestCase(unittest.TestCase):
         for genome in history["genomes"]:
             for chromosome in genome:
                 self.assertTrue(len(chromosome) > 0)
+
+    def test_get_adjacencies_from_genome_reference(self):
+        genome = ChromosomeGenerator.generate_chromosomes(chromosome_size=100, chromosomes_cnt=3, ab=True)
+        adjacencies = get_adjacencies_from_genome(genome=genome, is_reference=True)
+        self.assertEqual(len(adjacencies), 297)
+        for adjacency_idx in adjacencies:
+            self.assertEqual(len(adjacencies[adjacency_idx]), 2)
+            self.assertIn((Haplotype.A, Haplotype.A), adjacencies[adjacency_idx])
+            self.assertIn((Haplotype.B, Haplotype.B), adjacencies[adjacency_idx])
+            self.assertEqual(len(adjacencies[adjacency_idx][(Haplotype.A, Haplotype.A)]), 1)
+            self.assertEqual(len(adjacencies[adjacency_idx][(Haplotype.B, Haplotype.B)]), 1)
+            self.assertEqual(adjacencies[adjacency_idx][(Haplotype.A, Haplotype.A)][0].adjacency_type,
+                             AdjacencyType.REFERENCE)
+            self.assertEqual(adjacencies[adjacency_idx][(Haplotype.B, Haplotype.B)][0].adjacency_type,
+                             AdjacencyType.REFERENCE)
+
+    def test_get_adjacencies_from_genome_novel(self):
+        genome = ChromosomeGenerator.generate_chromosomes(chromosome_size=100, chromosomes_cnt=3, ab=True)
+        adjacencies = get_adjacencies_from_genome(genome=genome, is_reference=False)
+        self.assertEqual(len(adjacencies), 297)
+        for adjacency_idx in adjacencies:
+            self.assertEqual(len(adjacencies[adjacency_idx]), 2)
+            self.assertIn((Haplotype.A, Haplotype.A), adjacencies[adjacency_idx])
+            self.assertIn((Haplotype.B, Haplotype.B), adjacencies[adjacency_idx])
+            self.assertEqual(len(adjacencies[adjacency_idx][(Haplotype.A, Haplotype.A)]), 1)
+            self.assertEqual(len(adjacencies[adjacency_idx][(Haplotype.B, Haplotype.B)]), 1)
+            self.assertEqual(adjacencies[adjacency_idx][(Haplotype.A, Haplotype.A)][0].adjacency_type,
+                             AdjacencyType.NOVEL)
+            self.assertEqual(adjacencies[adjacency_idx][(Haplotype.B, Haplotype.B)][0].adjacency_type,
+                             AdjacencyType.NOVEL)
+
+    def test_get_allele_specific_scn_profiles_from_genome(self):
+        genome = ChromosomeGenerator.generate_chromosomes(chromosome_size=100, chromosomes_cnt=3, ab=True)
+        scn_profile_by_idx = get_scn_profile_from_genome(genome=genome)
+        self.assertEqual(len(scn_profile_by_idx), 300)
+        for scnr in scn_profile_by_idx.values():
+            self.assertEqual(len(scnr[Haplotype.A]), 1)
+            self.assertEqual(len(scnr[Haplotype.B]), 1)
+            self.assertNotIn(Haplotype.UNKNOWN, scnr)
+
 

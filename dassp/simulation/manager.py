@@ -1,7 +1,8 @@
-from collections import Counter
+from collections import Counter, defaultdict
 from copy import deepcopy
 
-from dassp.simulation.parts import ChromosomeGenerator, MutationType, Mutation, reverse_segments, duplicate_segments, delete_segments
+from dassp.core.structures import Adjacency, AdjacencyType, Haplotype, Phasing, HAPLOTYPE_PAIRS_TO_PHASING
+from dassp.simulation.parts import ChromosomeGenerator, MutationType, Mutation, reverse_segments, duplicate_segments, delete_segments, reverse_segment
 import numpy as np
 
 from simulation.parts import translocation_segments
@@ -15,9 +16,9 @@ MUTATION_CONFIG = {
                   MutationType.DUPLICATION,
                   MutationType.DELETION,
                   MutationType.TRANSLOCATION],
-    "mut_probs": [0.15,
-                  0.4,
-                  0.4,
+    "mut_probs": [0.1,
+                  0.425,
+                  0.425,
                   0.05],
     "mut_types_spec": {
         MutationType.DELETION: {
@@ -47,15 +48,21 @@ class SimulationManager(object):
 
 
 class ClonalSubClonalSimulationManager(SimulationManager):
-    def __init__(self, chrs_cnt, clones_cnt,
+    def __init__(self, chrs_cnt,
                  clonal_mut_cnt, subclonal_mut_cnt,
                  chrs_size=CHROMOSOMES_SIZE, ab=AB):
         super(ClonalSubClonalSimulationManager, self).__init__(chrs_cnt=chrs_cnt,
                                                                chrs_size=chrs_size,
-                                                               clones_cnt=clones_cnt,
+                                                               clones_cnt=2,
                                                                ab=ab)
         self.clonal_mutation_cnt = clonal_mut_cnt
         self.subclonal_mutation_cnt = subclonal_mut_cnt
+
+    def generate_mutated_genomes(self):
+        self.majority_clone_history = generate_mutated_genome(starting_genome=self.initial_genome, mutation_cnt=self.clonal_mutation_cnt)
+        self.majority_clone = self.majority_clone_history["genomes"][-1]
+        self.minority_clone_history = generate_mutated_genome(starting_genome=self.majority_clone, mutation_cnt=self.subclonal_mutation_cnt)
+        self.minority_clone = self.minority_clone_history["genomes"][-1]
 
 
 def generate_mutation(mutation_type, genome, mutations_config):
@@ -351,3 +358,90 @@ def generate_mutated_genome(starting_genome, mutation_cnt, mutations_config=MUTA
                 mutations_config[ME].add(p)
         history["genomes"].append(current_genome)
     return history
+
+
+def get_adjacencies_from_genome(genome, is_reference=False, ref_adjacencies=None):
+    if ref_adjacencies is None:
+        ref_adjacencies = set()
+    result = {}
+    for chromosome in genome:
+        for s1, s2 in zip(chromosome[:-1], chromosome[1:]):
+            adjacency = Adjacency(position1=s1.end_position, position2=s2.start_position, adjacency_type=AdjacencyType.NOVEL)
+            if adjacency.idx in ref_adjacencies or is_reference:
+                adjacency.adjacency_type = AdjacencyType.REFERENCE
+                ref_adjacencies.add(adjacency.idx)
+            if s1.end_position == adjacency.position2:
+                phasing = (s1.extra.get("haplotype", Haplotype.UNKNOWN), s2.extra.get("haplotype", Haplotype.UNKNOWN))
+            else:
+                phasing = (s2.extra.get("haplotype", Haplotype.UNKNOWN), s1.extra.get("haplotype", Haplotype.UNKNOWN))
+            phasing = HAPLOTYPE_PAIRS_TO_PHASING[phasing]
+            if adjacency.idx not in result:
+                result[adjacency.idx] = defaultdict(list)
+            result[adjacency.idx][phasing].append(adjacency)
+    return result
+
+
+def get_scn_profile_from_genome(genome):
+    result = defaultdict(lambda: defaultdict(list))
+    for chromosome in genome:
+        for segment in chromosome:
+            haplotype = segment.extra.get("haplotype", Haplotype.UNKNOWN)
+            if segment.is_reversed:
+                segment_idx = reverse_segment(segment=segment).idx  # internal changes are made to segment on `reverse_segment` function call, have to undo them
+                reverse_segment(segment=segment)
+            else:
+                segment_idx = segment.idx
+            result[segment_idx][haplotype].append(segment)
+    return result
+
+
+def get_unphased_adjacency_cn(adjacency_id, acnp, default=0):
+    if adjacency_id not in acnp:
+        return default
+    total_cnt = 0
+    for phasing in Phasing:
+        if phasing not in acnp[adjacency_id]:
+            continue
+        value = acnp[adjacency_id][phasing]
+        if isinstance(value, list):
+            value = len(value)
+        total_cnt += value
+    return total_cnt
+
+
+def get_correctly_inferred_present_absent_unphased_adjacencies(ref_acnp, inf_acnp):
+    result = get_correctly_inferred_present_absent_unphased_adjacencies(ref_acnp=ref_acnp, inf_acnp=inf_acnp)
+    return result.union(get_correctly_inferred_present_unphased_adjacencies(ref_acnp=ref_acnp, inf_acnp=inf_acnp))
+
+
+def get_correctly_inferred_present_unphased_adjacencies(ref_acnp, inf_acnp):
+    result = set()
+    adjacency_ids = set(ref_acnp.keys()).union(inf_acnp.keys())
+    for a_id in adjacency_ids:
+        ref_total_cnt = get_unphased_adjacency_cn(adjacency_id=a_id, acnp=ref_acnp)
+        inf_total_cnt = get_unphased_adjacency_cn(adjacency_id=a_id, acnp=inf_acnp)
+        if ref_total_cnt > 0 and inf_total_cnt > 0:
+            result.add(a_id)
+    return result
+
+
+def get_correctly_inferred_absent_unphased_adjacencies(ref_acnp, inf_acnp):
+    result = set()
+    adjacency_ids = set(ref_acnp.keys()).union(set(inf_acnp.keys()))
+    for a_id in adjacency_ids:
+        ref_total_cnt = get_unphased_adjacency_cn(adjacency_id=a_id, acnp=ref_acnp)
+        inf_total_cnt = get_unphased_adjacency_cn(adjacency_id=a_id, acnp=inf_acnp)
+        if ref_total_cnt == 0 and inf_total_cnt == 0:
+            result.add(a_id)
+    return result
+
+
+def get_correctly_inferred_unphased_adjacencies(ref_acnp, inf_acnp):
+    result = set()
+    adjacency_ids = set(ref_acnp.keys()).union(set(inf_acnp.keys()))
+    for a_id in adjacency_ids:
+        ref_total_cnt = get_unphased_adjacency_cn(adjacency_id=a_id, acnp=ref_acnp)
+        inf_total_cnt = get_unphased_adjacency_cn(adjacency_id=a_id, acnp=inf_acnp)
+        if int(ref_total_cnt) == int(inf_total_cnt):
+            result.add(a_id)
+    return result

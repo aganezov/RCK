@@ -104,6 +104,36 @@ class PositionCluster(object):
 class Haplotype(Enum):
     A = "A"
     B = "B"
+    UNKNOWN = "?"
+
+    def __str__(self):
+        return self.value
+
+
+class Phasing(Enum):
+    AA = (Haplotype.A, Haplotype.A)
+    AB = (Haplotype.A, Haplotype.B)
+    BA = (Haplotype.B, Haplotype.A)
+    BB = (Haplotype.B, Haplotype.B)
+    AU = (Haplotype.A, Haplotype.UNKNOWN)
+    BU = (Haplotype.B, Haplotype.UNKNOWN)
+    UA = (Haplotype.UNKNOWN, Haplotype.A)
+    UB = (Haplotype.UNKNOWN, Haplotype.B)
+    UU = (Haplotype.UNKNOWN, Haplotype.UNKNOWN)
+
+    def __str__(self):
+        return "{h1}{h2}".format(h1=str(self.value[0]), h2=str(self.value[1]))
+
+
+HAPLOTYPE_PAIRS_TO_PHASING = {entry.value: entry for entry in Phasing}
+
+
+def haplotype_pair_to_phasing(h1, h2):
+    return HAPLOTYPE_PAIRS_TO_PHASING[(h1, h2)]
+
+
+def phasing_to_haplotype_pair(phasing):
+    return phasing.value
 
 
 class Segment(object):
@@ -131,6 +161,10 @@ class Segment(object):
     @property
     def chromosome(self):
         return self.start_position.chromosome
+
+    @property
+    def is_reversed(self):
+        return self.start_position >= self.end_position
 
     @idx.setter
     def idx(self, value):
@@ -247,3 +281,11 @@ class SegmentCopyNumberRecord(object):
 
 SegmentCNRecord = SegmentCopyNumberRecord
 SCNR = SegmentCNRecord
+
+
+class AdjacencyGroup(object):
+    def __init__(self, adjacencies, idx, fp=0.0):
+        self.adjacencies = adjacencies
+        self.fp = fp
+        self.idx = idx
+
