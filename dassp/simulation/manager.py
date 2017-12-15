@@ -2,35 +2,69 @@ from collections import Counter, defaultdict
 from copy import deepcopy
 
 from dassp.core.structures import Adjacency, AdjacencyType, Haplotype, Phasing, HAPLOTYPE_PAIRS_TO_PHASING
-from dassp.simulation.parts import ChromosomeGenerator, MutationType, Mutation, reverse_segments, duplicate_segments, delete_segments, reverse_segment
+from dassp.simulation.parts import ChromosomeGenerator, MutationType, Mutation, reverse_segments, duplicate_segments, delete_segments, reverse_segment, HAPLOTYPE
 import numpy as np
 
-from simulation.parts import translocation_segments
+from simulation.parts import translocate_segments
 
 CHROMOSOMES_SIZE = 100
 AB = True
-ME = "mutated_extremities"
+PRESERVE_TELOMERES = "preserve_telomeres"
+HIIS = "haplotype_independent_infinite_sites"
+HSIS = "haplotype_specific_infinite_sites"
+
+
+MUTATED_EXTREMITIES = "mutated_extremities"
+REVERSAL_TELOMERE = "telomere_reversal"
+DELETION_TELOMERE = "telomere_deletion"
+DUPLICATION_TELOMERE = "telomere_duplication"
+TRANSLOCATION_CHR1_TELOMERE = "telomere_chr1_translocation"
+TRANSLOCATION_CHR2_TELOMERE = "telomere_chr2_translocation"
+HOMOZYGOUS = "homozygous"
+MUTATIONS_TYPES_SPECIFICATIONS = "mutations_types_specification"
+MUTATIONS_TYPES = "mutations_types"
+MUTATION_PROBABILITIES = "mutation_probabilities"
+DUPLICATION_TANDEM_PROBABILITY = "tandem_duplication_probability"
+DUPLICATION_REVERSED_PROBABILITY = "reversed_duplication_probability"
+
+CHROMOSOME_INDEX = "chromosome_index"
+REVERSAL_START_INDEX = "reversal_start_index"
+REVERSAL_END_INDEX = "reversal_end_index"
+POSITIONS = "positions"
+
+DUPLICATION_START_INDEX = "duplication_start_index"
+DUPLICATION_END_INDEX = "duplication_end_index"
+DUPLICATION_INSERT_SHIFT = "duplication_insert_shift"
+DUPLICATION_REVERSED = "duplication_reversed"
 
 MUTATION_CONFIG = {
-    "mut_types": [MutationType.REVERSAL,
-                  MutationType.DUPLICATION,
-                  MutationType.DELETION,
-                  MutationType.TRANSLOCATION],
-    "mut_probs": [0.1,
-                  0.425,
-                  0.425,
-                  0.05],
-    "mut_types_spec": {
+    MUTATIONS_TYPES: [MutationType.REVERSAL,
+                      MutationType.DUPLICATION,
+                      MutationType.DELETION,
+                      MutationType.TRANSLOCATION],
+    MUTATION_PROBABILITIES: [0.1,
+                             0.425,
+                             0.425,
+                             0.05],
+    PRESERVE_TELOMERES: True,
+    HIIS: True,
+    HSIS: True,
+    MUTATIONS_TYPES_SPECIFICATIONS: {
         MutationType.DELETION: {
-            "arm_deletion": False
+            DELETION_TELOMERE: False
         },
         MutationType.REVERSAL: {
-            "arm_reversal": False
+            REVERSAL_TELOMERE: False
+        },
+        MutationType.DUPLICATION: {
+            DUPLICATION_TELOMERE: False,
+            DUPLICATION_TANDEM_PROBABILITY: 1,
+            DUPLICATION_REVERSED_PROBABILITY: 0.25
         },
         MutationType.TRANSLOCATION: {
-            "chr1_empty_arm": False,
-            "chr2_empty_arm": False,
-            "homozygous": False
+            TRANSLOCATION_CHR1_TELOMERE: False,
+            TRANSLOCATION_CHR2_TELOMERE: False,
+            HOMOZYGOUS: False
         }
     }
 }
@@ -72,19 +106,58 @@ def generate_mutation(mutation_type, genome, mutations_config):
     return generating_function(genome=genome, config=mutations_config)
 
 
-def breakage_indexes(chromosome, config):
+def get_available_breakage_indexes(chromosome, config):
     result = []
     if len(chromosome) == 0:
         return result
-    if chromosome[0].start_position not in config[ME]:
-        result.append(0)
+    ###
+    #
+    # processing left telomere
+    #
+    ###
+    start_position, haplotype = chromosome[0].start_position, chromosome[0].extra[HAPLOTYPE]
+    if not config[PRESERVE_TELOMERES]:
+        if config[HIIS]:
+            if start_position not in config[MUTATED_EXTREMITIES]:
+                result.append(0)
+        elif config[HSIS]:
+            if (start_position, haplotype) not in config[MUTATED_EXTREMITIES]:
+                result.append(0)
+        else:
+            result.append(0)
+    ###
+    #
+    # processing all but telomeres in a chromosome
+    #
+    ###
     for i in range(len(chromosome) - 1):
         p1 = chromosome[i].end_position
+        p1_haplotype = chromosome[i].extra[HAPLOTYPE]
         p2 = chromosome[i + 1].start_position
-        if p1 not in config[ME] and p2 not in config[ME]:
+        p2_haplotype = chromosome[i].extra[HAPLOTYPE]
+        if config[HIIS]:
+            if p1 not in config[MUTATED_EXTREMITIES] and p2 not in config[MUTATED_EXTREMITIES]:
+                result.append(i + 1)
+        elif config[HSIS]:
+            if (p1, p1_haplotype) not in config[MUTATED_EXTREMITIES] and (p2, p2_haplotype) not in config[MUTATED_EXTREMITIES]:
+                result.append(i + 1)
+        else:
             result.append(i + 1)
-    if chromosome[-1].end_position not in config[ME]:
-        result.append(len(chromosome))
+    ###
+    #
+    # processing right telomere
+    #
+    ###
+    end_position, haplotype = chromosome[-1].end_position, chromosome[-1].extra[HAPLOTYPE]
+    if not config[PRESERVE_TELOMERES]:
+        if config[HIIS]:
+            if end_position not in config[MUTATED_EXTREMITIES]:
+                result.append(len(chromosome))
+        elif config[HSIS]:
+            if (end_position, haplotype) not in config[MUTATED_EXTREMITIES]:
+                result.append(len(chromosome))
+        else:
+            result.append(len(chromosome))
     return result
 
 
@@ -92,8 +165,8 @@ def generate_reversal(genome, config):
     while True:
         chromosome_index = np.random.randint(low=0, high=len(genome))
         chromosome = genome[chromosome_index]
-        br_indexes = breakage_indexes(chromosome=chromosome, config=config)
-        if not config["mut_types_spec"][MutationType.REVERSAL]["arm_reversal"]:
+        br_indexes = get_available_breakage_indexes(chromosome=chromosome, config=config)
+        if not config[MUTATIONS_TYPES_SPECIFICATIONS][MutationType.REVERSAL][REVERSAL_TELOMERE]:
             if br_indexes[0] == 0:
                 br_indexes = br_indexes[1:]
             if br_indexes[-1] == len(chromosome):
@@ -108,7 +181,10 @@ def generate_reversal(genome, config):
     else:
         sp1 = chromosome[reversal_start_index - 1].end_position
         sp2 = chromosome[reversal_start_index].start_position
-    reversal_end_index_i = np.random.randint(low=reversal_start_index_i + 1, high=len(br_indexes))
+    if reversal_start_index_i + 1 == len(br_indexes) - 1:
+        reversal_end_index_i = len(br_indexes) - 1
+    else:
+        reversal_end_index_i = np.random.randint(low=reversal_start_index_i + 1, high=len(br_indexes))
     reversal_end_index = br_indexes[reversal_end_index_i]
     if reversal_end_index == len(chromosome):
         ep1 = chromosome[-1].end_position
@@ -118,10 +194,10 @@ def generate_reversal(genome, config):
         ep2 = chromosome[reversal_end_index].start_position
     return Mutation(mutation_type=MutationType.REVERSAL,
                     mutation_data={
-                        "chromosome_index": chromosome_index,
-                        "reversal_start_index": reversal_start_index,
-                        "reversal_end_index": reversal_end_index,
-                        "positions": [sp1, sp2, ep1, ep2]
+                        CHROMOSOME_INDEX: chromosome_index,
+                        REVERSAL_START_INDEX: reversal_start_index,
+                        REVERSAL_END_INDEX: reversal_end_index,
+                        POSITIONS: [sp1, sp2, ep1, ep2]
                     })
 
 
@@ -129,7 +205,12 @@ def generate_duplication(genome, config):
     while True:
         chromosome_index = np.random.randint(low=0, high=len(genome))
         chromosome = genome[chromosome_index]
-        br_indexes = breakage_indexes(chromosome=chromosome, config=config)
+        br_indexes = get_available_breakage_indexes(chromosome=chromosome, config=config)
+        if not config[MUTATIONS_TYPES_SPECIFICATIONS][MutationType.DUPLICATION][DUPLICATION_TELOMERE]:
+            if br_indexes[0] == 0:
+                br_indexes = br_indexes[1:]
+            if br_indexes[-1] == len(chromosome):
+                br_indexes = br_indexes[:-1]
         if len(br_indexes) >= 2:
             break
     duplication_start_index_i = np.random.randint(low=0, high=len(br_indexes) - 1)
@@ -140,7 +221,10 @@ def generate_duplication(genome, config):
     else:
         sp1 = chromosome[duplication_start_index - 1].end_position
         sp2 = chromosome[duplication_start_index].start_position
-    duplication_end_index_i = np.random.randint(low=duplication_start_index_i + 1, high=len(br_indexes))
+    if duplication_start_index_i + 1 == len(br_indexes) - 1:
+        duplication_end_index_i = len(br_indexes) - 1
+    else:
+        duplication_end_index_i = np.random.randint(low=duplication_start_index_i + 1, high=len(br_indexes))
     duplication_end_index = br_indexes[duplication_end_index_i]
     if duplication_end_index == len(chromosome):
         ep1 = chromosome[-1].end_position
@@ -148,12 +232,23 @@ def generate_duplication(genome, config):
     else:
         ep1 = chromosome[duplication_end_index - 1].end_position
         ep2 = chromosome[duplication_end_index].start_position
+    tandem_dup_prob = config[MUTATIONS_TYPES_SPECIFICATIONS][MutationType.DUPLICATION][DUPLICATION_TANDEM_PROBABILITY]
+    tandem_duplication = np.random.choice(a=[True, False], p=[tandem_dup_prob, 1 - tandem_dup_prob])
+    if tandem_duplication:
+        insert_shift = 0
+    else:
+        # TODO: CHANGE, PLACEHOLDER
+        insert_shift = 0
+    reversed_dup_prob = config[MUTATIONS_TYPES_SPECIFICATIONS][MutationType.DUPLICATION][DUPLICATION_REVERSED_PROBABILITY]
+    reversed_duplication = np.random.choice(a=[True, False], p=[reversed_dup_prob, 1 - reversed_dup_prob])
     return Mutation(mutation_type=MutationType.DUPLICATION,
                     mutation_data={
-                        "chromosome_index": chromosome_index,
-                        "duplication_start_index": duplication_start_index,
-                        "duplication_end_index": duplication_end_index,
-                        "positions": [sp1, sp2, ep1, ep2]
+                        CHROMOSOME_INDEX: chromosome_index,
+                        DUPLICATION_START_INDEX: duplication_start_index,
+                        DUPLICATION_END_INDEX: duplication_end_index,
+                        DUPLICATION_INSERT_SHIFT: insert_shift,
+                        DUPLICATION_REVERSED: reversed_duplication,
+                        POSITIONS: [sp1, sp2, ep1, ep2]
                     })
 
 
@@ -161,7 +256,7 @@ def generate_deletion(genome, config):
     while True:
         chromosome_index = np.random.randint(low=0, high=len(genome))
         chromosome = genome[chromosome_index]
-        br_indexes = breakage_indexes(chromosome=chromosome, config=config)
+        br_indexes = get_available_breakage_indexes(chromosome=chromosome, config=config)
         if not config["mut_types_spec"][MutationType.DELETION]["arm_deletion"]:
             if br_indexes[0] == 0:
                 br_indexes = br_indexes[1:]
@@ -215,13 +310,13 @@ def generate_translocation(genome, config):
         if not config["mut_types_spec"][MutationType.TRANSLOCATION]["homozygous"] and \
                 chromosomes_are_mates(chromosome1=chromosome_1, chromosome2=chromosome_2):
             continue
-        chr1_br_indexes = breakage_indexes(chromosome=chromosome_1, config=config)
+        chr1_br_indexes = get_available_breakage_indexes(chromosome=chromosome_1, config=config)
         if not config["mut_types_spec"][MutationType.TRANSLOCATION]["chr1_empty_arm"]:
             if chr1_br_indexes[0] == 0:
                 chr1_br_indexes = chr1_br_indexes[1:]
             if chr1_br_indexes[-1] == len(chromosome_1):
                 chr1_br_indexes = chr1_br_indexes[:-1]
-        chr2_br_indexes = breakage_indexes(chromosome=chromosome_2, config=config)
+        chr2_br_indexes = get_available_breakage_indexes(chromosome=chromosome_2, config=config)
         if not config["mut_types_spec"][MutationType.TRANSLOCATION]["chr2_empty_arm"]:
             if chr2_br_indexes[0] == 0:
                 chr2_br_indexes = chr2_br_indexes[1:]
@@ -316,9 +411,9 @@ def apply_translocation(genome, mutation):
     chr1_trans_index = mutation.mutation_data["chr1_transl_index"]
     chr2_trans_index = mutation.mutation_data["chr2_transl_index"]
     cc = mutation.mutation_data["cc"]
-    new_chr1, new_chr2 = translocation_segments(chromosome1=chromosome_1, chromosome2=chromosome_2,
-                                                chromosome1_segment_index=chr1_trans_index,
-                                                chromosome2_segment_index=chr2_trans_index, cc=cc)
+    new_chr1, new_chr2 = translocate_segments(chromosome1=chromosome_1, chromosome2=chromosome_2,
+                                              chromosome1_segment_index=chr1_trans_index,
+                                              chromosome2_segment_index=chr2_trans_index, cc=cc)
     new_genome[chr1_index] = new_chr1
     new_genome[chr2_index] = new_chr2
     return new_genome
@@ -340,22 +435,24 @@ MUTATION_TYPES_to_MUTATING_FUNCTIONS = {
 
 
 def generate_mutated_genome(starting_genome, mutation_cnt, mutations_config=MUTATION_CONFIG):
-    if ME not in mutations_config:
-        mutations_config[ME] = set()
+    if MUTATED_EXTREMITIES not in mutations_config:
+        mutations_config[MUTATED_EXTREMITIES] = set()
     current_genome = deepcopy(starting_genome)
     history = {
         "genomes": [current_genome],
         "mutations": []
     }
     for _ in range(mutation_cnt):
-        mutation_type = np.random.choice(a=mutations_config["mut_types"],
-                                         p=mutations_config.get("mut_prob"))
+        mut_types = mutations_config["mut_types"]
+        mut_prob = mutations_config["mut_probs"]
+        mutation_type = np.random.choice(a=mut_types,
+                                         p=mut_prob)
         mutation = generate_mutation(mutation_type, current_genome, mutations_config)
         history["mutations"].append(mutation)
         current_genome = apply_mutation(current_genome, mutation)
         for p in mutation.mutation_data["positions"]:
             if p is not None:
-                mutations_config[ME].add(p)
+                mutations_config[MUTATED_EXTREMITIES].add(p)
         history["genomes"].append(current_genome)
     return history
 
@@ -371,9 +468,9 @@ def get_adjacencies_from_genome(genome, is_reference=False, ref_adjacencies=None
                 adjacency.adjacency_type = AdjacencyType.REFERENCE
                 ref_adjacencies.add(adjacency.idx)
             if s1.end_position == adjacency.position2:
-                phasing = (s1.extra.get("haplotype", Haplotype.UNKNOWN), s2.extra.get("haplotype", Haplotype.UNKNOWN))
+                phasing = (s1.extra.get(HAPLOTYPE, Haplotype.UNKNOWN), s2.extra.get(HAPLOTYPE, Haplotype.UNKNOWN))
             else:
-                phasing = (s2.extra.get("haplotype", Haplotype.UNKNOWN), s1.extra.get("haplotype", Haplotype.UNKNOWN))
+                phasing = (s2.extra.get(HAPLOTYPE, Haplotype.UNKNOWN), s1.extra.get(HAPLOTYPE, Haplotype.UNKNOWN))
             phasing = HAPLOTYPE_PAIRS_TO_PHASING[phasing]
             if adjacency.idx not in result:
                 result[adjacency.idx] = defaultdict(list)
@@ -385,7 +482,7 @@ def get_scn_profile_from_genome(genome):
     result = defaultdict(lambda: defaultdict(list))
     for chromosome in genome:
         for segment in chromosome:
-            haplotype = segment.extra.get("haplotype", Haplotype.UNKNOWN)
+            haplotype = segment.extra.get(HAPLOTYPE, Haplotype.UNKNOWN)
             if segment.is_reversed:
                 segment_idx = reverse_segment(segment=segment).idx  # internal changes are made to segment on `reverse_segment` function call, have to undo them
                 reverse_segment(segment=segment)
@@ -403,6 +500,20 @@ def get_unphased_adjacency_cn(adjacency_id, acnp, default=0):
         if phasing not in acnp[adjacency_id]:
             continue
         value = acnp[adjacency_id][phasing]
+        if isinstance(value, list):
+            value = len(value)
+        total_cnt += value
+    return total_cnt
+
+
+def get_unphased_segment_cn(segment_id, scnp, default=0):
+    if segment_id not in scnp:
+        return default
+    total_cnt = 0
+    for haplotype in Haplotype:
+        if haplotype not in scnp[segment_id]:
+            continue
+        value = scnp[segment_id][haplotype]
         if isinstance(value, list):
             value = len(value)
         total_cnt += value
@@ -444,4 +555,32 @@ def get_correctly_inferred_unphased_adjacencies(ref_acnp, inf_acnp):
         inf_total_cnt = get_unphased_adjacency_cn(adjacency_id=a_id, acnp=inf_acnp)
         if int(ref_total_cnt) == int(inf_total_cnt):
             result.add(a_id)
+    return result
+
+
+def get_correctly_inferred_unphased_segments(ref_scnp, inf_scnp):
+    result = set()
+    segment_ids = set(ref_scnp.keys()).union(inf_scnp.keys())
+    for s_id in segment_ids:
+        ref_total_cnt = get_unphased_segment_cn(segment_id=s_id, scnp=ref_scnp)
+        inf_total_cnt = get_unphased_segment_cn(segment_id=s_id, scnp=inf_scnp)
+        if ref_total_cnt == inf_total_cnt:
+            result.add(s_id)
+    return result
+
+
+def generate_fake_adjacencies(positions, number, real_adjacencies=None):
+    if real_adjacencies is None:
+        real_adjacencies = []
+    existing_adjacencies_ids = {a.idx for a in real_adjacencies}
+    result = {}
+    for _ in range(number):
+        while True:
+            p1, p2 = np.random.choice(positions, size=2)
+            adj = Adjacency(position1=p1, position2=p2, adjacency_type=AdjacencyType.NOVEL, extra={"fake": True})
+            if adj.idx in existing_adjacencies_ids:
+                continue
+            result[adj.idx] = adj
+            existing_adjacencies_ids.add(adj.idx)
+            break
     return result

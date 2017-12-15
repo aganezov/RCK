@@ -7,6 +7,8 @@ from dassp.core.structures import Haplotype, Position, Strand, PositionType, Seg
 CHROMOSOME_SIZE = 100
 CHROMOSOMES_CNT = 3
 
+HAPLOTYPE = "haplotype"
+
 
 class ChromosomeGenerator(object):
     @classmethod
@@ -31,7 +33,7 @@ class ChromosomeGenerator(object):
                                      ptype=PositionType.ARTIFICIAL)
             end_position = Position(chromosome=chr_name, coordinate=coordinate * 2 + 1, strand=Strand.FORWARD,
                                     ptype=PositionType.ARTIFICIAL)
-            segment = Segment(start_position=star_position, end_position=end_position, extra={"haplotype": haplotype})
+            segment = Segment(start_position=star_position, end_position=end_position, extra={HAPLOTYPE: haplotype})
             result.append(segment)
         return result
 
@@ -39,7 +41,7 @@ class ChromosomeGenerator(object):
     def get_b_chromosome_from_a(cls, a_chromosome):
         result = deepcopy(a_chromosome)
         for s in result:
-            s.extra["haplotype"] = Haplotype.B
+            s.extra[HAPLOTYPE] = Haplotype.B
         return result
 
 
