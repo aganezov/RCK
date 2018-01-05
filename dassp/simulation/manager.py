@@ -1053,8 +1053,6 @@ def tree_cnt(i):
             return ((half_cnt + 1) * half_cnt) // 2
         else:
             return tree_cnt(half - 1) * tree_cnt(half)
-
-    # print("entering tree_cnt with i={i}".format(i=i))
     if i == 0:
         return 1
     if i == 1:
@@ -1071,7 +1069,6 @@ def tree_cnt(i):
 
 @lru_cache(maxsize=1000)
 def get_root_selection_probabilities(nodes_cnt):
-    print("entering root_prob with n={n}".format(n=nodes_cnt))
     cnts = []
     middle = int(math.ceil(nodes_cnt / 2))
     for i in range(middle):
