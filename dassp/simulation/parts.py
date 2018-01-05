@@ -1,8 +1,8 @@
-from collections import defaultdict, Counter
+from collections import defaultdict, namedtuple
 from copy import deepcopy
 from enum import Enum
 
-from dassp.core.structures import Haplotype, Position, Strand, PositionType, Segment
+from dassp.core.structures import Haplotype, Position, Strand, PositionType, Segment, reverse_segment
 
 CHROMOSOME_SIZE = 100
 CHROMOSOMES_CNT = 3
@@ -45,15 +45,6 @@ class ChromosomeGenerator(object):
         return result
 
 
-def reverse_segment(segment, copy=True):
-    if not copy:
-        segment.start_position, segment.end_position = segment.end_position, segment.start_position
-        return segment
-    result = deepcopy(segment)
-    result.start_position, result.end_position = result.end_position, result.start_position
-    return result
-
-
 def delete_segments(chromosome, start_segment_index, end_segment_index, copy=True):
     if start_segment_index >= len(chromosome):
         raise ValueError("An index {si} for the segment corresponding to the beginning of the "
@@ -64,7 +55,7 @@ def delete_segments(chromosome, start_segment_index, end_segment_index, copy=Tru
                          "".format(li=end_segment_index, si=start_segment_index))
     if copy:
         return deepcopy(chromosome[:start_segment_index]) + deepcopy(chromosome[end_segment_index:])
-    return chromosome[:start_segment_index] + chromosome[:end_segment_index]
+    return chromosome[:start_segment_index] + chromosome[end_segment_index:]
 
 
 def reverse_segments(chromosome, start_segment_index, end_segment_index, copy=True):
@@ -83,13 +74,13 @@ def reverse_segments(chromosome, start_segment_index, end_segment_index, copy=Tr
         reversed_span.append(reverse_segment(s, copy=True))
     if copy:
         deepcopy(chromosome[:start_segment_index]) + reversed_span + deepcopy(chromosome[end_segment_index:])
-    return chromosome[:start_segment_index] + reversed_span + chromosome[:end_segment_index:]
+    return chromosome[:start_segment_index] + reversed_span + chromosome[end_segment_index:]
 
 
 def duplicate_segments(chromosome,
                        start_segment_index,  # beginning of a span to be duplicated
                        end_segment_index,  # end of a span to be duplicated
-                       insert_shift=0,  # a shift from the beginning (if <0) of the end (if >=0) to the location where the inserted span to be placed
+                       insert_segment_index=None,  # an index of the location where the inserted span to be placed, if None, assigned to the end_segment_index + 1
                        reverse_copy=False,  # whether to insert an original / reversed copy of a span of segments
                        copy=True):
     if start_segment_index > end_segment_index >= 0:
@@ -99,22 +90,27 @@ def duplicate_segments(chromosome,
         raise ValueError("An index {si} for the segment corresponding to the beginning of the "
                          "duplication is larger or equal to than the total number of segments {cnt} in the chromosomes"
                          "".format(si=start_segment_index, cnt=len(chromosome)))
-    if insert_shift < 0:
-        insert_segment_index = start_segment_index + insert_shift
-    else:
-        insert_segment_index = end_segment_index + insert_shift
-    if insert_segment_index < 0:
-        raise ValueError("A shift of ({i_s}) for the inserted sequence of segments attempts to places the copy outside the chromosome ({s_i}{i_s}={i_si})"
-                         "".format(i_s=insert_shift, s_i=start_segment_index, i_si=insert_segment_index))
-    elif insert_segment_index > len(chromosome):
-        raise ValueError("A shift of ({i_s}) for the inserted sequence of segments attempts to places the copy outside the chromosome ({e_i}+{i_s}={i_si})"
-                         "".format(i_s=insert_shift, e_i=end_segment_index, i_si=insert_segment_index))
+    if insert_segment_index is None:
+        insert_segment_index = end_segment_index
+    if insert_segment_index < 0 or insert_segment_index > len(chromosome):
+        raise ValueError("An insert segment index of {isi} was specified, attempting to place the duplicated sopy of segments' span outside the chromosome (0-{cl})"
+                         "".format(isi=insert_segment_index, cl=len(chromosome)))
+    if end_segment_index > insert_segment_index > start_segment_index:
+        raise ValueError()
     duplicated_span = deepcopy(chromosome[start_segment_index:end_segment_index])
     if reverse_copy:
         duplicated_span = reverse_segments(chromosome=duplicated_span, start_segment_index=0, end_segment_index=len(duplicated_span), copy=False)
     if copy:
         deepcopy(chromosome[:insert_segment_index]) + duplicated_span + deepcopy(chromosome[insert_segment_index:])
     return chromosome[:insert_segment_index] + duplicated_span + chromosome[insert_segment_index:]
+
+
+def duplicate_chromosome(chromosome):
+    return deepcopy(chromosome)
+
+
+def duplicate_genome(chromosomes):
+    return deepcopy(chromosomes)
 
 
 def translocate_segments(chromosome1,
@@ -143,6 +139,9 @@ def translocate_segments(chromosome1,
     return new_chr1, new_chr2
 
 
+ChrPart = namedtuple("ChromothripsisPart", ['chr_index', 'pi', 'reverse'])
+
+
 def split_and_reassemble_chromosomes(chromosomes,
                                      per_chrs_segment_indexes,
                                      target_structures,
@@ -156,9 +155,8 @@ def split_and_reassemble_chromosomes(chromosomes,
     """
 
     :param chromosomes: a list of chromosomes (i.e., lists of segments)
-    :param per_chrs_segment_indexes: a list of lists, where each internal list contains a indexes of where respective chromosomes hav to be "chopped"
-    :param target_structures: a list of new chromosome configurations, each configuration is represented as a list of entries, where each entry is a triplet determining
-        a "span" of segments obtained from the original chromosomal chopping as well as whether to use its original version or the reversed one
+    :param per_chrs_segment_indexes: a list of lists, where each internal list contains a indexes of where respective chromosomes have to be "cut"
+    :param target_structures: a list of new chromosome configurations, each configuration is represented as a list of ChrPart objects
     :param ensure_cut_indexes_valid:
     :param ensure_target_structure_valid:
     :param ensure_no_deletions:
@@ -198,14 +196,14 @@ def split_and_reassemble_chromosomes(chromosomes,
                                                               per_chrs_segment_indexes=per_chrs_segment_indexes,
                                                               target_structure=target_structures):
             raise ValueError()
-    parts = defaultdict(dict)                       # shallow copies of parts of the original chromosomes
+    parts = defaultdict(dict)  # shallow copies of parts of the original chromosomes
     ###
     # chop chromosomes into parts
     ###
     for cnt, chromosome in enumerate(chromosomes):
         current_part_number = 0
         current_l_segment_index = 0
-        for current_r_segment_index in per_chrs_segment_indexes[0]:
+        for current_r_segment_index in per_chrs_segment_indexes[cnt]:
             parts[cnt][current_part_number] = chromosome[current_l_segment_index:current_r_segment_index]
             current_l_segment_index = current_r_segment_index
             current_part_number += 1
@@ -216,14 +214,16 @@ def split_and_reassemble_chromosomes(chromosomes,
     result = []
     for structure in target_structures:
         result_chromosome = []
-        for origin_chromosome_i, span_index, reverse_use in structure:
-            span = parts[origin_chromosome_i][span_index]
-            if reverse_use:
-                span = reverse_segments(chromosome=span, start_segment_index=0, end_segment_index=len(span), copy=copy)
-            if copy:
-                result_chromosome.extend(deepcopy(span))
-            else:
-                result_chromosome.extend(span)
+        for part in structure:
+            # chromothripsis can have an super-complicated signature and thus all underlying genome is (deep)copied
+            #   just to make sure that all parts are reassembled (even if reversed and/or duplicated) in a undipendent fashion
+            span = deepcopy(parts[part.chr_index][part.pi])
+            if part.reverse:
+                span = reverse_segments(chromosome=span,
+                                        start_segment_index=0,
+                                        end_segment_index=len(span),
+                                        copy=False)
+            result_chromosome.extend(span)
         result.append(result_chromosome)
     return result
 
@@ -237,11 +237,9 @@ def chromothripsis_cut_indexes_are_valid(chromosomes, per_chrs_segment_indexes, 
     if len(per_chrs_segment_indexes) > len(chromosomes):
         return False
     for chromosome, per_chr_indexes in zip(chromosomes, per_chrs_segment_indexes):
-        if len(per_chr_indexes) == 0:
+        if len(set(per_chr_indexes)) != len(per_chr_indexes):  # same location can not be specified more than once
             return False
-        if len(set(per_chr_indexes)) != len(per_chr_indexes):
-            return False
-        for index in per_chr_indexes:
+        for index in per_chr_indexes:  # indexes have to be valid indexes
             if index < 0 or index > len(chromosome):
                 return False
     return True
@@ -260,36 +258,33 @@ def chromothripsis_target_structure_is_valid(chromosomes, per_chrs_segment_index
     for chr_structure in target_structure:
         if len(chr_structure) == 0:
             return False
-        for entry in chr_structure:
-            chromosome_index, span_index, reverse_use = entry
-            if chromosome_index not in possible_parts:
+        for part in chr_structure:
+            if part.chr_index not in possible_parts:
                 return False
-            if span_index < 0 or span_index >= possible_parts[chromosome_index]:
+            if part.pi < 0 or part.pi >= possible_parts[part.chr_index]:
                 return False
-            if not isinstance(reverse_use, bool):
+            if not isinstance(part.reverse, bool):
                 return False
     return True
 
 
 def chromothripsis_no_deletions(chromosomes, per_chrs_segment_indexes, target_structure):
     to_be_used = set()
-    for cnt, chromosome in enumerate(chromosomes):
-        for i in range(per_chrs_segment_indexes[cnt] + 1):
-            to_be_used.add((cnt, i))
+    for chr_index, chromosome in enumerate(chromosomes):
+        for i in range(len(per_chrs_segment_indexes[chr_index]) + 1):
+            to_be_used.add((chr_index, i))
     used = set()
     for structure in target_structure:
-        for entry in structure:
-            chromosome_index, span_index, _ = entry
-            used.add((chromosome_index, span_index))
+        for part in structure:
+            used.add((part.chr_index, part.pi))
     return len(to_be_used - used) == 0
 
 
 def chromothripsis_no_duplications(chromosomes, per_chrs_segment_indexes, target_structure):
     used = []
     for structure in target_structure:
-        for entry in structure:
-            chromosome_index, span_index, _ = entry
-            used.append((chromosome_index, span_index))
+        for part in structure:
+            used.append((part.chr_index, part.pi))
     return len(set(used)) == len(used)
 
 
@@ -302,36 +297,36 @@ def chromothripsis_is_cnn(chromosomes, per_chrs_segment_indexes, target_structur
 def chromothripsis_preserves_telomeres(chromosomes, per_chrs_segments_indexes, target_structure):
     original_left_telomeres = set()
     original_right_telomeres = set()
-    for chr_cnt, chromosome in enumerate(chromosomes):
-        original_left_telomeres.add((chr_cnt, 0))
-        original_right_telomeres.add((chr_cnt, len(per_chrs_segments_indexes[chr_cnt])))
+    for chr_index, chromosome in enumerate(chromosomes):
+        original_left_telomeres.add((chr_index, 0))
+        original_right_telomeres.add((chr_index, len(per_chrs_segments_indexes[chr_index])))
     used_telomeres = set()
     for structure in target_structure:
         ###
         # checking novel left telomere
         ###
-        chr_index, span_index, reverse_use = structure[0]
-        if reverse_use:
-            if (chr_index, span_index) not in original_right_telomeres:
+        l_telomere_part = structure[0]
+        if l_telomere_part.reverse:
+            if (l_telomere_part.chr_index, l_telomere_part.pi) not in original_right_telomeres:
                 return False
-            used_telomeres.add((chr_index, span_index))
+            used_telomeres.add((l_telomere_part.chr_index, l_telomere_part.pi))
         else:
-            if (chr_index, span_index) not in original_left_telomeres:
+            if (l_telomere_part.chr_index, l_telomere_part.pi) not in original_left_telomeres:
                 return False
-            used_telomeres.add((chr_index, span_index))
+            used_telomeres.add((l_telomere_part.chr_index, l_telomere_part.pi))
         ###
         # checking novel right telomere
         ###
-        chr_index, span_index, reverse_use = structure[-1]
-        if reverse_use:
-            if (chr_index, span_index) not in original_left_telomeres:
+        r_telomere_part = structure[-1]
+        if r_telomere_part.reverse:
+            if (r_telomere_part.chr_index, r_telomere_part.pi) not in original_left_telomeres:
                 return False
-            used_telomeres.add((chr_index, span_index))
+            used_telomeres.add((r_telomere_part.chr_index, r_telomere_part.pi))
         else:
-            if (chr_index, span_index) not in original_right_telomeres:
+            if (r_telomere_part.chr_index, r_telomere_part.pi) not in original_right_telomeres:
                 return False
-            used_telomeres.add((chr_index, span_index))
-    return len(original_right_telomeres + original_left_telomeres - used_telomeres) == 0
+            used_telomeres.add((r_telomere_part.chr_index, r_telomere_part.pi))
+    return len((original_right_telomeres | original_left_telomeres) - used_telomeres) == 0
 
 
 def chromothripsis_preserves_number_of_chromosomes(chromosomes, per_chrs_segment_indexes, target_structure):
@@ -343,7 +338,10 @@ class MutationType(Enum):
     DUPLICATION = 1
     REVERSAL = 2
     TRANSLOCATION = 3
-    CHROMOTHRIPSIS = 6
+    CHROMOTHRIPSIS = 4
+    CHROMOSOME_DUP = 5
+    CHROMOSOME_DEL = 6
+    WGD = 7
 
     def __str__(self):
         return self.name

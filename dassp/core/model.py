@@ -26,7 +26,7 @@ class DASSPModel(object):
                  adjacencies_groups=None):  # a list of list of adjacencies (groups), where each adjacency group must be fully present in at least one of the clones
         self.config = {
             "homo_na_only": True,
-            "SCN_strategy": SCNTStrategy.CLONAL,
+            "SCN_strategy": None,
             "telomere_max_allele_specific": True
         }
         if adjacencies_groups is None:
@@ -414,7 +414,39 @@ class DASSPModel(object):
                 for i in self.clone_ids:
                     self.gm.addConstr(self.variables["P"][i][ra.idx][Phasing.AA] + self.variables["P"][i][ra.idx][Phasing.BA], g.GRB.LESS_EQUAL, 1)
                     self.gm.addConstr(self.variables["P"][i][ra.idx][Phasing.AB] + self.variables["P"][i][ra.idx][Phasing.BB], g.GRB.LESS_EQUAL, 1)
-
+            #####
+            #
+            # constraints enforcing consistent phasing of novel adjacencies across all clones
+            #
+            #####
+            self.gm.addGenConstrOr(self.variables["Pc"][ra.idx][Phasing.AA], [self.variables["P"][i][ra.idx][Phasing.AA] for i in self.clone_ids])
+            self.gm.addGenConstrOr(self.variables["Pc"][ra.idx][Phasing.AB], [self.variables["P"][i][ra.idx][Phasing.AB] for i in self.clone_ids])
+            self.gm.addGenConstrOr(self.variables["Pc"][ra.idx][Phasing.BA], [self.variables["P"][i][ra.idx][Phasing.BA] for i in self.clone_ids])
+            self.gm.addGenConstrOr(self.variables["Pc"][ra.idx][Phasing.BB], [self.variables["P"][i][ra.idx][Phasing.BB] for i in self.clone_ids])
+            self.gm.addConstr(self.variables["Pc"][ra.idx][Phasing.AA] + self.variables["Pc"][ra.idx][Phasing.AB] + self.variables["Pc"][ra.idx][Phasing.BA] + self.variables["Pc"][ra.idx][Phasing.BB],
+                              g.GRB.LESS_EQUAL, 2)
+        ####
+        #
+        # adding balancing equations on segments extremities that are reference telomeres without novel adjacencies
+        #
+        ###
+        for p_id in self.positions_idxs:
+            segment = self.iag.get_segment_edge(node=p_id, data=True)[2]["object"]
+            if len(list(self.iag.adjacency_edges(nbunch=p_id))) == 0:
+                for i in self.clone_ids:
+                    t_va_lin_exp = g.LinExpr(self.variables["B"][i][segment.idx]*self.scnr_by_sids[segment.idx].maj_a_segmentcn.cn)
+                    t_va_lin_exp.add(g.LinExpr((1-self.variables["B"][i][segment.idx])*self.scnr_by_sids[segment.idx].min_a_segmentcn.cn))
+                    self.gm.addConstr(t_va_lin_exp, g.GRB.GREATER_EQUAL, 0, name="non_negative_telomere_score_{{rt,{clone_id},{vertex},A}}".format(clone_id=str(i), vertex=str(p_id)))
+                    self.gm.addConstr(self.variables["T"][i][p_id][Haplotype.A], g.GRB.EQUAL, t_va_lin_exp)
+                    t_vb_lin_exp = g.LinExpr(self.variables["B"][i][segment.idx]*self.scnr_by_sids[segment.idx].maj_b_segmentcn.cn)
+                    t_vb_lin_exp.add(g.LinExpr((1-self.variables["B"][i][segment.idx])*self.scnr_by_sids[segment.idx].min_b_segmentcn.cn))
+                    self.gm.addConstr(t_vb_lin_exp, g.GRB.GREATER_EQUAL, 0, name="non_negative_telomere_score_{{rt,{clone_id},{vertex},B}}".format(clone_id=str(i), vertex=str(p_id)))
+                    self.gm.addConstr(self.variables["T"][i][p_id][Haplotype.B], g.GRB.EQUAL, t_vb_lin_exp)
+        ####
+        #
+        # maximum over telomeres imbalance across clones
+        #
+        ####
         for p_id in self.positions_idxs:
             a_extremities = [self.variables["T"][i][p_id][Haplotype.A] for i in self.clone_ids]
             b_extremities = [self.variables["T"][i][p_id][Haplotype.B] for i in self.clone_ids]
@@ -501,4 +533,11 @@ class DASSPModel(object):
             reverse_segment(segment=segment)
         else:
             segment_idx = segment.idx
-        return self.variables["B"][clone_id][segment_idx]
+        result = {}
+        if self.variables["B"][clone_id][segment_idx].x == 1:
+            result[Haplotype.A] = self.scnr_by_sids[segment_idx].maj_a_segmentcn.cn
+            result[Haplotype.B] = self.scnr_by_sids[segment_idx].maj_b_segmentcn.cn
+        else:
+            result[Haplotype.A] = self.scnr_by_sids[segment_idx].min_a_segmentcn.cn
+            result[Haplotype.B] = self.scnr_by_sids[segment_idx].min_b_segmentcn.cn
+        return result
