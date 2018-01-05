@@ -385,7 +385,7 @@ def generate_reversal_mutation(genome, config):
     while True:
         try_cnt += 1
         if try_cnt >= config[MUTATIONS_TYPES_SPECIFICATIONS][MutationType.REVERSAL][REVERSAL_TRY_LIMIT]:
-            return None
+            return Mutation(mutation_type=MutationType.REVERSAL, mutation_data=None)
         chromosome_index = np.random.randint(low=0, high=len(genome))
         chromosome = genome[chromosome_index]
         br_locations = get_available_breakage_locations(chromosome=chromosome, config=config)
@@ -422,7 +422,7 @@ def generate_duplication_mutation(genome, config):
     while True:
         try_cnt += 1
         if try_cnt >= config[MUTATIONS_TYPES_SPECIFICATIONS][MutationType.DUPLICATION][DUPLICATION_TRY_LIMIT]:
-            return None
+            return Mutation(mutation_type=MutationType.DUPLICATION, mutation_data=None)
         chromosome_index = np.random.randint(low=0, high=len(genome))
         chromosome = genome[chromosome_index]
         br_locations = get_available_breakage_locations(chromosome=chromosome, config=config)
@@ -482,7 +482,7 @@ def generate_deletion_mutation(genome, config):
     while True:
         try_cnt += 1
         if try_cnt >= config[MUTATIONS_TYPES_SPECIFICATIONS][MutationType.DELETION][DELETION_TRY_LIMIT]:
-            return None
+            return Mutation(mutation_type=MutationType.DELETION, mutation_data=None)
         chromosome_index = np.random.randint(low=0, high=len(genome))
         chromosome = genome[chromosome_index]
         br_locations = get_available_breakage_locations(chromosome=chromosome, config=config)
@@ -531,7 +531,7 @@ def generate_translocation_mutation(genome, config):
     while True:
         try_cnt += 1
         if try_cnt >= config[MUTATIONS_TYPES_SPECIFICATIONS][MutationType.TRANSLOCATION][TRANSLOCATION_TRY_LIMIT]:
-            return None
+            return Mutation(mutation_type=MutationType.TRANSLOCATION, mutation_data=None)
         chromosome_1_index, chromosome_2_index = np.random.randint(low=0, high=len(genome), size=2)
         if chromosome_1_index == chromosome_2_index:
             continue
@@ -591,12 +591,12 @@ def generate_chromothripsis_mutation(genome, config):
     try_cnt = 0
     min_chr_cnt = config[MUTATIONS_TYPES_SPECIFICATIONS][MutationType.CHROMOTHRIPSIS][CHROMOTHRIPSIS_MIN_CHR_CNT]
     if len(genome) < min_chr_cnt:
-        return None
+        return Mutation(mutation_type=MutationType.CHROMOTHRIPSIS, mutation_data=None)
     max_chr_cnt = config[MUTATIONS_TYPES_SPECIFICATIONS][MutationType.CHROMOTHRIPSIS][CHROMOTHRIPSIS_MAX_CHR_CNT]
     while True:
         try_cnt += 1
         if try_cnt >= config[MUTATIONS_TYPES_SPECIFICATIONS][MutationType.CHROMOTHRIPSIS][CHROMOTHRIPSIS_TRY_LIMIT]:
-            return None
+            return Mutation(mutation_type=MutationType.CHROMOTHRIPSIS, mutation_data=None)
         chr_cnt = np.random.randint(low=min_chr_cnt, high=min(len(genome) + 1, max_chr_cnt + 1))
         chromosomes_indexes = sorted(np.random.choice(a=list(range(len(genome))), size=chr_cnt, replace=False))
         chr_by_indexes = {chr_index: genome[chr_index] for chr_index in chromosomes_indexes}
@@ -1017,16 +1017,17 @@ def generate_mutated_genome(starting_genome, mutation_cnt, config=MUTATION_CONFI
                                      genome=current_genome,
                                      config=config)
         history[MUTATIONS].append(mutation)
-        current_genome = apply_mutation(genome=current_genome,
-                                        mutation=mutation,
-                                        inplace=True)
-        for bl in mutation.mutation_data[LOCATIONS]:
-            for ep in [bl.be1, bl.be2]:
-                if ep.p is not None:
-                    if config[HIIS]:
-                        config[MUTATED_EXTREMITIES].add(ep.p)
-                    elif config[HSIS]:
-                        config[MUTATED_EXTREMITIES].add((ep.p, ep.h))
+        if mutation.mutation_data is not None:
+            current_genome = apply_mutation(genome=current_genome,
+                                            mutation=mutation,
+                                            inplace=True)
+            for bl in mutation.mutation_data[LOCATIONS]:
+                for ep in [bl.be1, bl.be2]:
+                    if ep.p is not None:
+                        if config[HIIS]:
+                            config[MUTATED_EXTREMITIES].add(ep.p)
+                        elif config[HSIS]:
+                            config[MUTATED_EXTREMITIES].add((ep.p, ep.h))
         if save_intermediate_genome or mut_cnt == (mutation_cnt - 1):
             history[GENOMES].append(current_genome)
             current_genome = deepcopy(current_genome)
