@@ -58,6 +58,8 @@ class IntervalAdjacencyGraph(object):
 
     def add_segment_edge(self, segment, sort=True):
         u, v = self.get_edge_vertices_pair_from_segment(segment=segment, sort=sort)
+        if self.has_segment_edge(edge=(u, v), sort=sort):
+            return
         self.graph.add_edge(u=u, v=v, object=segment)
 
     def add_adjacency_edge(self, adjacency, sort=True):
@@ -66,6 +68,8 @@ class IntervalAdjacencyGraph(object):
         if adjacency.position2 not in self.graph:
             raise ValueError()
         u, v = self.get_edge_vertices_pair_from_adjacency(adjacency=adjacency, sort=sort)
+        if self.has_adjacency_edge(edge=(u, v), sort=True):   # can not have parallel adjacency edges. Only possible parallel edges are pairs of segment/adjacency ones
+            return
         self.graph.add_edge(u=u, v=v, object=adjacency)
 
     @staticmethod
@@ -93,7 +97,8 @@ class IntervalAdjacencyGraph(object):
             yield node_tuple_based_on_flag(n=n, attr=attr, data=data)
 
     def edges(self, data=True, nbunch=None):
-        return self.graph.edges(nbunch=nbunch, data=data)
+        for value in self.graph.edges(nbunch=nbunch, data=data):
+            yield value
 
     def segment_edges(self, data=True, nbunch=None, sort=True):
         for u, v, attr in self.edges(nbunch=nbunch, data=True):
@@ -107,25 +112,44 @@ class IntervalAdjacencyGraph(object):
             if isinstance(attr["object"], Adjacency):
                 if sort:
                     u, v = tuple(sorted([u, v]))
-                yield edge_tuple_based_on_flag(u, v, attr, data)
+                yield edge_tuple_based_on_flag(u=u, v=v, attr=attr, data=data)
 
     def ref_adjacency_edges(self, data=True, nbunch=None, sort=True):
         for u, v, attr in self.adjacency_edges(data=True, nbunch=nbunch, sort=sort):
             if attr["object"].adjacency_type == AdjacencyType.REFERENCE:
-                yield edge_tuple_based_on_flag(u, v, attr, data)
+                yield edge_tuple_based_on_flag(u=u, v=v, attr=attr, data=data)
 
     def nov_adjacency_edges(self, data=True, nbunch=None, sort=True):
         for u, v, attr in self.adjacency_edges(data=True, nbunch=nbunch, sort=sort):
             if attr["object"].adjacency_type == AdjacencyType.NOVEL:
-                yield edge_tuple_based_on_flag(u, v, attr, data)
+                yield edge_tuple_based_on_flag(u=u, v=v, attr=attr, data=data)
 
     def get_segment_edge(self, node, data=True, sort=True):
         segment_edges = list(self.segment_edges(data=True, nbunch=node, sort=sort))
-        assert len(segment_edges) == 1
+        if len(segment_edges) != 1:
+            raise ValueError()
         u = segment_edges[0][0]
         v = segment_edges[0][1]
         attr = segment_edges[0][2]
         return edge_tuple_based_on_flag(u=u, v=v, attr=attr, data=data)
+
+    def has_segment_edge(self, edge, sort=True):
+        u, v = edge
+        if sort:
+            u, v = tuple(sorted([u, v]))
+        if u not in self.graph or v not in self.graph:
+            return False
+        segment_edges = list(self.segment_edges(data=True, nbunch=u, sort=sort))
+        if len(segment_edges) == 0:
+            return False
+        u_s_edge_data = segment_edges[0][2]
+        segment_edges = list(self.segment_edges(data=True, nbunch=v, sort=sort))
+        if len(segment_edges) == 0:
+            return False
+        v_s_edge_data = segment_edges[0][2]
+        if u_s_edge_data["object"] != v_s_edge_data["object"]:
+            return False
+        return True
 
     @property
     def complies_with_is(self):
@@ -134,6 +158,27 @@ class IntervalAdjacencyGraph(object):
             if len(n_as) > 1:
                 return False
         return True
+
+    def adjacency_edges_connected_components_subgraphs(self, ref=True, nov=True, copy=True):
+        adjacency_edge_only_iag = self.__class__()
+        if ref:
+            for u, v, data in self.ref_adjacency_edges(data=True, sort=True):
+                adjacency_edge_only_iag.graph.add_edge(u=u, v=v, **data)
+        if nov:
+            for u, v, data in self.nov_adjacency_edges(data=True, sort=True):
+                adjacency_edge_only_iag.graph.add_edge(u=u, v=v, **data)
+        for adj_iag_cc in nx.connected_component_subgraphs(G=adjacency_edge_only_iag.graph, copy=copy):
+            iag = self.__class__()
+            iag.graph = adj_iag_cc
+            yield iag
+
+    def ref_adjacency_edges_connected_components_subgraphs(self, copy=True):
+        for iag in self.adjacency_edges_connected_components_subgraphs(ref=True, nov=False, copy=copy):
+            yield iag
+
+    def nov_adjacency_edges_connected_components_subgraphs(self, copy=True):
+        for iag in self.adjacency_edges_connected_components_subgraphs(ref=False, nov=True, copy=copy):
+            yield iag
 
     def get_set_self_segment_edges(self, sort=True):
         result = set()
@@ -173,18 +218,18 @@ class IntervalAdjacencyGraph(object):
         return self_rel_compl, other_rel_compl
 
     def relative_complements_on_adjacency_edges(self, adjacencies):
-        self_edges = self.get_set_self_adjacency_edges()
+        self_edges = self.get_set_self_adjacency_edges(sort=True)
         other_edges = set()
         for a in adjacencies:
-            u, v = tuple(sorted(self.get_edge_vertices_pair_from_adjacency(adjacency=a)))
+            u, v = self.get_edge_vertices_pair_from_adjacency(adjacency=a, sort=True)
             other_edges.add((u, v))
         intersection = self_edges.intersection(other_edges)
         self_rel_compl = self_edges - intersection
-        other_rel_compl = self_edges - intersection
+        other_rel_compl = other_edges - intersection
         return self_rel_compl, other_rel_compl
 
     def topology_matches_for_genome(self, genome):
-        segments = get_segments_from_genome(genome=genome, copy=True)
+        segments = get_segments_from_genome(genome=genome, copy=True, make_all_non_reversed=True)
         strip_haplotype_from_segments(segments=segments, inplace=True, strip_positions_haplotypes=True)
         self_rel_compl_segments, genome_rel_compl_segments = self.relative_complements_on_segment_edges(segments=segments)
         if len(self_rel_compl_segments) != 0 or len(genome_rel_compl_segments) != 0:
@@ -197,7 +242,7 @@ class IntervalAdjacencyGraph(object):
         return True
 
     def topology_allows_for_genome(self, genome):
-        segments = get_segments_from_genome(genome=genome, copy=True)
+        segments = get_segments_from_genome(genome=genome, copy=True, make_all_non_reversed=True)
         strip_haplotype_from_segments(segments=segments, inplace=True, strip_positions_haplotypes=True)
         self_rel_compl_segments, genome_rel_compl_segments = self.relative_complements_on_segment_edges(segments=segments)
         if len(genome_rel_compl_segments) != 0:
@@ -207,6 +252,7 @@ class IntervalAdjacencyGraph(object):
         self_rel_compl_adjs, genome_rel_compl_adjs = self.relative_complements_on_adjacency_edges(adjacencies=adjacencies)
         if len(genome_rel_compl_adjs) != 0:
             return False
+        return True
 
     def represents_given_genome(self, genome):
         if not self.is_copy_number_aware:
@@ -223,7 +269,7 @@ class IntervalAdjacencyGraph(object):
 
     @property
     def is_copy_number_aware(self):
-        for edge, data in self.edges(data=True):
+        for u, v, data in self.edges(data=True):
             if COPY_NUMBER not in data:
                 return False
         return True
@@ -238,13 +284,12 @@ class IntervalAdjacencyGraph(object):
         return True
 
     def node_imbalance(self, node):
-        segment_edge, data = self.get_segment_edge(node=node, data=True)
+        u, v, data = self.get_segment_edge(node=node, data=True, sort=True)
         if COPY_NUMBER not in data:
             raise ValueError()
         segment_copy_number = data[COPY_NUMBER]
         imbalance = segment_copy_number
-        for adj_edge, data in self.adjacency_edges(data=True, nbunch=node):
-            u, v = adj_edge
+        for u, v, data in self.adjacency_edges(data=True, nbunch=node, sort=True):
             if COPY_NUMBER not in data:
                 raise ValueError()
             adj_copy_number = data[COPY_NUMBER]
@@ -271,10 +316,9 @@ class IntervalAdjacencyGraph(object):
         genome_scn_profile = get_segments_copy_number_profile(segments=segments)
         genome_scn_profile_by_edges = {}
         for s, cn in genome_scn_profile.items():
-            genome_scn_profile_by_edges[self.get_edge_vertices_pair_from_segment(segment=s)] = cn
+            genome_scn_profile_by_edges[self.get_edge_vertices_pair_from_segment(segment=s, sort=True)] = cn
         self_scn_profile_by_edges = {}
-        for u, v, data in self.segment_edges(data=True):
-            u, v = tuple(sorted([u, v]))
+        for u, v, data in self.segment_edges(data=True, sort=True):
             cn = data[COPY_NUMBER]
             self_scn_profile_by_edges[(u, v)] = cn
         checked_edges = set()
@@ -297,10 +341,9 @@ class IntervalAdjacencyGraph(object):
         genome_acn_profile = get_adjacencies_copy_number_profile(adjacencies=adjacencies)
         genome_acn_profile_by_edges = {}
         for a, cn in genome_acn_profile.items():
-            genome_acn_profile_by_edges[self.get_edge_vertices_pair_from_adjacency(adjacency=a)] = cn
+            genome_acn_profile_by_edges[self.get_edge_vertices_pair_from_adjacency(adjacency=a, sort=True)] = cn
         self_acn_profile_by_edges = {}
-        for u, v, data in self.adjacency_edges(data=True):
-            u, v = tuple(sorted([u, v]))
+        for u, v, data in self.adjacency_edges(data=True, sort=True):
             cn = data[COPY_NUMBER]
             self_acn_profile_by_edges[(u, v)] = cn
         checked_edges = set()
@@ -319,18 +362,123 @@ class IntervalAdjacencyGraph(object):
                 return False
         return True
 
-    def get_copy_numbers_from_genome(self, genome, ensure_topology=True, inherit_topology=False):
+    def assign_copy_numbers_from_genome(self, genome, ensure_topology=True, inherit_segment_topology=False, inherit_adjacency_topology=False):
         if ensure_topology and not self.topology_allows_for_genome(genome=genome):
             raise ValueError()
         segments = get_segments_from_genome(genome=genome, copy=True, make_all_non_reversed=True)
         strip_haplotype_from_segments(segments=segments, inplace=True, strip_positions_haplotypes=True)
+        self.assign_copy_numbers_from_segments(segments=segments, inherit_topology=inherit_segment_topology)
+        adjacencies = get_adjacencies_from_genome(genome=genome, copy=True)
+        strip_phasing_from_adjacencies(adjacencies=adjacencies, inplace=True, strip_positions_haplotypes=True, sort=True)
+        self.assign_copy_numbers_from_adjacencies(adjacencies=adjacencies, inherit_topology=inherit_adjacency_topology)
+
+    def assign_copy_numbers_from_segments(self, segments, inherit_topology=False):
         genome_scn_profile = get_segments_copy_number_profile(segments=segments)
         genome_scn_profile_by_edges = {}
-        self_segment_edges = self.segment_edges(data=False)
-        processed_segment_edges = {}
+        self_segment_edges = self.get_set_self_segment_edges(sort=True)
+        processed_segment_edges = set()
         for s, cn in genome_scn_profile.items():
-            genome_scn_profile_by_edges[self.get_edge_vertices_pair_from_segment(segment=s)] = cn
-            pass
+            edge = self.get_edge_vertices_pair_from_segment(segment=s, sort=True)
+            u, v = edge
+            if edge not in self_segment_edges:
+                if inherit_topology:
+                    self.add_segment_edge(segment=s, sort=True)
+                else:
+                    raise ValueError()
+            genome_scn_profile_by_edges[edge] = cn
+            self.set_segment_edge_copy_number(edge=(u, v), cn=cn, sort=False, soft_miss=False)
+            processed_segment_edges.add((u, v))
+        for u, v in (self_segment_edges - processed_segment_edges):
+            self.set_segment_edge_copy_number(edge=(u, v), cn=0, sort=False, soft_miss=False)
+
+    def assign_copy_numbers_from_adjacencies(self, adjacencies, inherit_topology=False):
+        genome_acn_profile = get_adjacencies_copy_number_profile(adjacencies=adjacencies)
+        genome_acn_profile_by_edges = {}
+        self_adjacency_edges = self.get_set_self_adjacency_edges(sort=True)
+        processed_adjacency_edges = set()
+        for a, cn in genome_acn_profile.items():
+            edge = self.get_edge_vertices_pair_from_adjacency(adjacency=a, sort=True)
+            u, v = edge
+            if edge not in self_adjacency_edges:
+                if inherit_topology:
+                    self.add_adjacency_edge(adjacency=a, sort=True)
+                else:
+                    raise ValueError()
+            genome_acn_profile_by_edges[edge] = cn
+            self.set_adjacency_edge_copy_number(edge=(u, v), cn=cn, sort=False, soft_miss=False)
+            processed_adjacency_edges.add((u, v))
+        unprocessed_edges = self_adjacency_edges - processed_adjacency_edges
+        for u, v in unprocessed_edges:
+            self.set_adjacency_edge_copy_number(edge=(u, v), cn=0, sort=False, soft_miss=False)
+
+    def set_segment_edge_copy_number(self, edge, cn, sort=True, soft_miss=False):
+        u, v = edge
+        if sort:
+            u, v = tuple(sorted([u, v]))
+        if not self.has_segment_edge(edge=(u, v), sort=True):
+            if soft_miss:
+                return
+            else:
+                raise ValueError()
+        u, v, data = self.get_segment_edge(node=u, data=True, sort=True)
+        data[COPY_NUMBER] = cn
+
+    def set_adjacency_edge_copy_number(self, edge, cn, sort=True, soft_miss=False):
+        u, v = edge
+        if sort:
+            u, v = tuple(sorted([u, v]))
+        if not self.has_adjacency_edge(edge=(u, v), sort=True):
+            if soft_miss:
+                return
+            else:
+                raise ValueError()
+        u, v, data = self.get_adjacency_edge(edge=(u, v), data=True, sort=True)
+        data[COPY_NUMBER] = cn
+
+    def has_adjacency_edge(self, edge, sort=True):
+        try:
+            self.get_adjacency_edge(edge=edge, data=False, sort=sort)
+            return True
+        except ValueError:
+            return False
+
+    def get_adjacency_edge(self, edge, data=True, sort=True):
+        u, v = edge
+        if sort:
+            u, v = tuple(sorted([u, v]))
+        u_adjacency_edges = list(self.adjacency_edges(data=True, nbunch=u, sort=True))
+        if len(u_adjacency_edges) == 0:
+            raise ValueError()
+        v_adjacency_edges = list(self.adjacency_edges(data=True, nbunch=v, sort=True))
+        if len(v_adjacency_edges) == 0:
+            raise ValueError()
+        shared_edge = None
+        for uu, uv, uattr in u_adjacency_edges:
+            if (uu, uv) != (u, v):
+                continue
+            for vu, vv, vattr in v_adjacency_edges:
+                if (uu, uv) == (vu, vv) and uattr["object"] == vattr["object"]:
+                    shared_edge = u, v, uattr
+                    break
+            if shared_edge is not None:
+                break
+        if shared_edge is None:
+            raise ValueError()
+        u, v, attr = shared_edge
+        return edge_tuple_based_on_flag(u=u, v=v, attr=attr, data=data)
+
+    def get_telomeres(self, check_cn_awareness=True, sort=True, copy=True):
+        if check_cn_awareness and not self.is_copy_number_aware:
+            raise ValueError()
+        result = []
+        for node in self.nodes(data=False):
+            if self.is_telomere(node=node):
+                if copy:
+                    node = deepcopy(node)
+                result.append(node)
+        if sort:
+            result = sorted(result)
+        return result
 
 
 IAG = IntervalAdjacencyGraph
@@ -340,7 +488,7 @@ class HaplotypeSpecificIntervalAdjacencyGraph(IntervalAdjacencyGraph):
     def __init__(self, segments=None, adjacencies=None):
         super(HaplotypeSpecificIntervalAdjacencyGraph, self).__init__(segments=segments, adjacencies=adjacencies)
 
-    def add_segment_edge(self, segment):
+    def add_segment_edge(self, segment, sort=True):
         haplotype = segment.extra[HAPLOTYPE]
         extra = {HAPLOTYPE: haplotype}
         sp = segment.start_position
@@ -351,14 +499,14 @@ class HaplotypeSpecificIntervalAdjacencyGraph(IntervalAdjacencyGraph):
         ep_hs = ep.is_haplotype_specific
         if not ep_hs:
             ep.extra.update(extra)
-        super(HaplotypeSpecificIntervalAdjacencyGraph, self).add_segment_edge(segment=segment)
+        super(HaplotypeSpecificIntervalAdjacencyGraph, self).add_segment_edge(segment=segment, sort=sort)
 
-    def add_adjacency_edge(self, adjacency):
+    def add_adjacency_edge(self, adjacency, sort=True):
         if not adjacency.position1.is_haplotype_specific:
             raise ValueError()
         if not adjacency.position2.is_haplotype_specific:
             raise ValueError()
-        super(HaplotypeSpecificIntervalAdjacencyGraph, self).add_adjacency_edge(adjacency=adjacency)
+        super(HaplotypeSpecificIntervalAdjacencyGraph, self).add_adjacency_edge(adjacency=adjacency, sort=sort)
 
     def build_graph(self):
         for s in self.segments:
@@ -391,7 +539,7 @@ class HaplotypeSpecificIntervalAdjacencyGraph(IntervalAdjacencyGraph):
         return self.complies_with_is
 
     def topology_matches_for_genome(self, genome):
-        segments = get_segments_from_genome(genome=genome, copy=True)
+        segments = get_segments_from_genome(genome=genome, copy=True, make_all_non_reversed=True)
         self_rel_compl_segments, genome_rel_compl_segments = self.relative_complements_on_segment_edges(segments=segments)
         if len(self_rel_compl_segments) != 0 or len(genome_rel_compl_segments) != 0:
             return False
@@ -402,7 +550,7 @@ class HaplotypeSpecificIntervalAdjacencyGraph(IntervalAdjacencyGraph):
         return True
 
     def topology_allows_for_genome(self, genome):
-        segments = get_segments_from_genome(genome=genome, copy=True)
+        segments = get_segments_from_genome(genome=genome, copy=True, make_all_non_reversed=True)
         self_rel_compl_segments, genome_rel_compl_segments = self.relative_complements_on_segment_edges(segments=segments)
         if len(genome_rel_compl_segments) != 0:
             return False
@@ -410,6 +558,7 @@ class HaplotypeSpecificIntervalAdjacencyGraph(IntervalAdjacencyGraph):
         self_rel_compl_adjs, genome_rel_compl_adjs = self.relative_complements_on_adjacency_edges(adjacencies=adjacencies)
         if len(genome_rel_compl_adjs) != 0:
             return False
+        return True
 
     def represents_given_genome(self, genome):
         if not self.is_copy_number_aware:
@@ -422,6 +571,14 @@ class HaplotypeSpecificIntervalAdjacencyGraph(IntervalAdjacencyGraph):
             return False
         return True
 
+    def assign_copy_numbers_from_genome(self, genome, ensure_topology=True, inherit_segment_topology=False, inherit_adjacency_topology=False):
+        if ensure_topology and not self.topology_allows_for_genome(genome=genome):
+            raise ValueError()
+        segments = get_segments_from_genome(genome=genome, copy=True, make_all_non_reversed=True)
+        self.assign_copy_numbers_from_segments(segments=segments, inherit_topology=inherit_segment_topology)
+        adjacencies = get_adjacencies_from_genome(genome=genome, copy=True, inherit_haplotypes=True)
+        self.assign_copy_numbers_from_adjacencies(adjacencies=adjacencies, inherit_topology=inherit_adjacency_topology)
+
 
 def construct_iag(ref_genome, mut_genomes, build_graph=True):
     segments = get_segments_from_genome(genome=ref_genome, copy=True)
@@ -431,7 +588,7 @@ def construct_iag(ref_genome, mut_genomes, build_graph=True):
         nov_adjacencies.extend(get_adjacencies_from_genome(genome=mut_genome, copy=True))
     nh_ref_adjacencies = strip_phasing_from_adjacencies(adjacencies=ref_adjacencies, inplace=False, strip_positions_haplotypes=True)
     nh_nov_adjacencies = strip_phasing_from_adjacencies(adjacencies=nov_adjacencies, inplace=False, strip_positions_haplotypes=True)
-    nh_segments = strip_haplotype_from_segments(segments=segments, inplace=False)
+    nh_segments = strip_haplotype_from_segments(segments=segments, inplace=False, strip_positions_haplotypes=True)
     assign_ref_adjacency_status(adjacencies=nh_ref_adjacencies, inplace=True)
     ref_adjacencies_set = set(nh_ref_adjacencies)
     assign_adjacency_status(adjacencies=nh_nov_adjacencies, ref_adjacencies=ref_adjacencies_set, inplace=True)

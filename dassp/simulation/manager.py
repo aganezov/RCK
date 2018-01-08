@@ -101,28 +101,28 @@ MUTATION_CONFIG = {
         ],
     MUTATIONS_PROBABILITIES:
         [
-            0.125,
-            0.425,
+            0.145,
+            0.429,
             0.340,
-            0.050,
-            0.030,
+            0.054,
             0.020,
-            0.000,
             0.010,
+            0.000,
+            0.002,
         ],
     MUTATIONS_PROBABILITIES_BY_MUTATIONS_TYPES:
         {
-            MutationType.REVERSAL: 0.125,
-            MutationType.DUPLICATION: 0.425,
+            MutationType.REVERSAL: 0.145,
+            MutationType.DUPLICATION: 0.429,
             MutationType.DELETION: 0.340,
-            MutationType.TRANSLOCATION: 0.050,
-            MutationType.CHROMOTHRIPSIS: 0.030,
-            MutationType.CHROMOSOME_DUP: 0.020,
+            MutationType.TRANSLOCATION: 0.054,
+            MutationType.CHROMOTHRIPSIS: 0.020,
+            MutationType.CHROMOSOME_DUP: 0.010,
             MutationType.CHROMOSOME_DEL: 0.000,
-            MutationType.WGD: 0.010,
+            MutationType.WGD: 0.002,
         },
     PRESERVE_TELOMERES: True,
-    HIIS: True,
+    HIIS: False,
     HSIS: True,
     MUTATIONS_TYPES_SPECIFICATIONS: {
         MutationType.DELETION: {
@@ -553,6 +553,8 @@ def generate_translocation_mutation(genome, config):
         u_bls_by_chr_indexes = get_unique_breakage_locations(br_locations_by_chr_indexes=bls_by_chr_indexes, config=config)
         chr1_br_locations = u_bls_by_chr_indexes[chromosome_1_index]
         chr2_br_locations = u_bls_by_chr_indexes[chromosome_2_index]
+        if len(chr1_br_locations) == 0 or len(chr2_br_locations) == 0:
+            continue
         if not config[MUTATIONS_TYPES_SPECIFICATIONS][MutationType.TRANSLOCATION][TRANSLOCATION_CHR1_TELOMERE]:
             if breakage_location_is_on_telomere(breakage_location=chr1_br_locations[0]):
                 chr1_br_locations = chr1_br_locations[1:]
@@ -635,7 +637,7 @@ def generate_chromothripsis_mutation(genome, config):
         all_br_locations_by_chr_indexes = get_unique_breakage_locations(br_locations_by_chr_indexes=all_br_locations_by_chr_indexes, config=config)
         for chr_index in chromosomes_indexes:
             if chr_index not in all_br_locations_by_chr_indexes:
-                all_br_locations_by_chr_indexes = False
+                all_chr_have_br_locations = False
                 break
             br_locations = all_br_locations_by_chr_indexes[chr_index]
             if len(br_locations) == 0:

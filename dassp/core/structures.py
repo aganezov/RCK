@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from collections import Counter
+from collections import Counter, namedtuple
 from copy import deepcopy
 
 import networkx as nx
@@ -60,6 +60,8 @@ class Position(object):
             if len(self.chromosome) != len(other.chromosome):
                 return len(self.chromosome) < len(other.chromosome)
             return self.chromosome < other.chromosome
+        if self.is_haplotype_specific and other.is_haplotype_specific and self.extra[HAPLOTYPE] != other.extra[HAPLOTYPE]:
+            return self.extra[HAPLOTYPE] < other.extra[HAPLOTYPE]
         if self.coordinate != other.coordinate:
             return self.coordinate < other.coordinate
         return self.strand.value < other.strand.value
@@ -143,6 +145,11 @@ class Haplotype(Enum):
             return cls.B
         if string == "?":
             return cls.UNKNOWN
+
+    def __lt__(self, other):
+        if not isinstance(other, Haplotype):
+            return False
+        return self.value < other.value
 
 
 class Phasing(Enum):
@@ -377,6 +384,12 @@ SegmentCNRecord = SegmentCopyNumberRecord
 SCNR = SegmentCNRecord
 
 
+class StructureProfile(object):
+    def __init__(self, scn_profile=None, acn_profile=None):
+        self.scn_profile = scn_profile
+        self.acn_profile = acn_profile
+
+
 class AdjacencyGroup(object):
     def __init__(self, adjacencies, idx, fp=0.0):
         self.adjacencies = adjacencies
@@ -397,7 +410,7 @@ def get_segments_from_genome(genome, copy=True, make_all_non_reversed=True):
     return result
 
 
-def get_telomeres_from_genome(genome, copy=True):
+def get_telomeres_from_genome(genome, copy=True, inherit_haplotypes=True):
     result = []
     for chromosome in genome:
         ss, es = chromosome[0], chromosome[-1]
@@ -407,16 +420,16 @@ def get_telomeres_from_genome(genome, copy=True):
         rt = es.end_position
         if copy:
             rt = deepcopy(es.end_position)
-        if HAPLOTYPE in ss.extra:
+        if HAPLOTYPE in ss.extra and inherit_haplotypes:
             lt.extra[HAPLOTYPE] = ss.extra[HAPLOTYPE]
-        if HAPLOTYPE in es.extra:
+        if HAPLOTYPE in es.extra and inherit_haplotypes:
             rt.extra[HAPLOTYPE] = es.extra[HAPLOTYPE]
         result.append(lt)
         result.append(rt)
     return result
 
 
-def strip_phasing_from_adjacencies(adjacencies, inplace=True, strip_positions_haplotypes=True):
+def strip_phasing_from_adjacencies(adjacencies, inplace=True, strip_positions_haplotypes=True, sort=True):
     result = []
     for a in adjacencies:
         v = a
@@ -428,6 +441,8 @@ def strip_phasing_from_adjacencies(adjacencies, inplace=True, strip_positions_ha
             del v.position2.extra[HAPLOTYPE]
         if PHASING in v.extra:
             del v.extra[PHASING]
+        if sort and v.position1 > v.position2:
+            v.position1, v.position2 = v.position2, v.position1
         result.append(v)
     return result
 

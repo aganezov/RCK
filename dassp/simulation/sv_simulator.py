@@ -1,7 +1,9 @@
 import os
+import pprint
 from copy import deepcopy
 import networkx as nx
 
+from core.structures import get_telomeres_from_genome, strip_haplotype_from_positions
 from dassp.core.graph import construct_iag, construct_hiag
 from dassp.simulation.manager import generate_mutated_genome, MUTATION_CONFIG, HIIS, HSIS, Manager, assign_uniform_mutation_configs, GENOME
 from dassp.simulation.parts import ChromosomeGenerator
@@ -41,10 +43,10 @@ if __name__ == "__main__":
     # main()
     import sys
     sys.setrecursionlimit(10000)
-    # manager = read_phylogenetic_mutation_history_from_file(file_name="dassp/simulation/instances/0_mut_history.txt")
+    # manager = read_phylogenetic_mutation_history_from_file(file_name="dassp/simulation/old_instances/0_mut_history.txt")
     # a = 5
-    for cnt in range(85, 100):
-        print(cnt, end="", flush=True)
+    for cnt in range(750, 1000):
+        print(cnt, end=" ", flush=True)
         ref_genome = ChromosomeGenerator.generate_chromosomes(chromosome_size=300,
                                                               chromosomes_cnt=5,
                                                               ab=True)
@@ -69,26 +71,55 @@ if __name__ == "__main__":
             iag = construct_iag(ref_genome=ref_genome,
                                 mut_genomes=[mut_genome],
                                 build_graph=True)
-            assert iag.complies_with_is
+            if not iag.complies_with_is:
+                print("IAG IS violation", end=" ", flush=True)
+            assert iag.topology_allows_for_genome(genome=mut_genome)
+            iag.assign_copy_numbers_from_genome(genome=mut_genome, ensure_topology=False, inherit_segment_topology=False, inherit_adjacency_topology=False)
+            assert iag.represents_given_genome(genome=mut_genome)
+            genome_telomeres = get_telomeres_from_genome(genome=mut_genome, copy=True, inherit_haplotypes=True)
+            strip_haplotype_from_positions(positions=genome_telomeres, inplace=True)
+            genome_telomeres = set(genome_telomeres)
+            graph_telomeres = iag.get_telomeres(check_cn_awareness=False, sort=True, copy=False)
+            graph_telomeres = set(graph_telomeres)
+            sym_dif = genome_telomeres.symmetric_difference(graph_telomeres)
+            # print(sorted(sym_dif))
+            assert len(sym_dif) == 0
             hsiag = construct_hiag(ref_genome=ref_genome,
                                    mut_genomes=[mut_genome],
                                    build_graph=True)
-            assert hsiag.complies_with_is
-            assert hsiag.complies_with_hiis
+            if not hsiag.complies_with_is:
+                print("HSIAG IS violation", end=" ", flush=True)
+            if not hsiag.complies_with_hiis:
+                print("HSIAG HIIS violation", end=" ", flush=True)
             assert hsiag.complies_with_hsis
+            assert hsiag.topology_allows_for_genome(genome=mut_genome)
+            hsiag.assign_copy_numbers_from_genome(genome=mut_genome, ensure_topology=True, inherit_segment_topology=False, inherit_adjacency_topology=False)
+            assert hsiag.represents_given_genome(genome=mut_genome)
+            genome_telomeres = get_telomeres_from_genome(genome=mut_genome, copy=True, inherit_haplotypes=True)
+            genome_telomeres = set(genome_telomeres)
+            graph_telomeres = hsiag.get_telomeres(check_cn_awareness=False, sort=True, copy=False)
+            graph_telomeres = set(graph_telomeres)
+            sym_dif = genome_telomeres.symmetric_difference(graph_telomeres)
+            # print(sorted(sym_dif))
+            assert len(sym_dif) == 0
+        assert not iag.represents_given_genome(genome=mut_genomes[0])
+        assert not hsiag.represents_given_genome(genome=mut_genomes[0])
         iag = construct_iag(ref_genome=ref_genome,
                             mut_genomes=mut_genomes,
                             build_graph=True)
-        assert iag.complies_with_is
+        if not iag.complies_with_is:
+            print("IAG IS violation (all genomes NAs)", end=" ", flush=True)
         hsiag = construct_hiag(ref_genome=ref_genome,
                                mut_genomes=mut_genomes,
                                build_graph=True)
-        assert hsiag.complies_with_is
-        assert hsiag.complies_with_hiis
+        if not hsiag.complies_with_is:
+            print("HSIAG IS violation (all genomes NAs)", end=" ", flush=True)
+        if not hsiag.complies_with_hiis:
+            print("HSIAG HIIS violation (all genomes NAs)", end=" ", flush=True)
         assert hsiag.complies_with_hsis
         print("\r", end="", flush=True)
-
-    # manager = read_phylogenetic_mutation_history_from_file(file_name="dassp/simulation/instances/83_mut_history.txt")
+    # print(pprint.pformat(MUTATION_CONFIG))
+    # manager = read_phylogenetic_mutation_history_from_file(file_name="dassp/simulation/instances/609_mut_history.txt")
     # manager.propagate_haplotypes_to_positions()
     # ref_genome = manager.tree.nodes[manager.root][GENOME]
     # mut_genomes = []
@@ -100,20 +131,31 @@ if __name__ == "__main__":
     #     iag = construct_iag(ref_genome=ref_genome,
     #                         mut_genomes=[mut_genome],
     #                         build_graph=True)
-    #     assert iag.complies_with_is
+    #     # assert iag.complies_with_is
+    #     iag.assign_copy_numbers_from_genome(genome=mut_genome, ensure_topology=True, inherit_segment_topology=False, inherit_adjacency_topology=False)
+    #     genome_telomeres = get_telomeres_from_genome(genome=mut_genome, copy=True, inherit_haplotypes=True)
+    #     strip_haplotype_from_positions(positions=genome_telomeres, inplace=True)
+    #     genome_telomeres = set(genome_telomeres)
+    #     graph_telomeres = iag.get_telomeres(check_cn_awareness=False, sort=True, copy=False)
+    #     graph_telomeres = set(graph_telomeres)
+    #     sym_dif = genome_telomeres.symmetric_difference(graph_telomeres)
+    #     # print(sorted(sym_dif))
+    #     assert len(sym_dif) == 0
     #     hsiag = construct_hiag(ref_genome=ref_genome,
     #                            mut_genomes=[mut_genome],
     #                            build_graph=True)
-    #     assert hsiag.complies_with_is
-    #     assert hsiag.complies_with_hiis
+    #     # assert hsiag.complies_with_is
+    #     # assert hsiag.complies_with_hiis
     #     assert hsiag.complies_with_hsis
+    #     assert hsiag.topology_allows_for_genome(genome=mut_genome)
+    #
     # iag = construct_iag(ref_genome=ref_genome,
     #                     mut_genomes=mut_genomes,
     #                     build_graph=True)
-    # assert iag.complies_with_is
+    # # assert iag.complies_with_is
     # hsiag = construct_hiag(ref_genome=ref_genome,
     #                        mut_genomes=mut_genomes,
     #                        build_graph=True)
-    # assert hsiag.complies_with_is
-    # assert hsiag.complies_with_hiis
+    # # assert hsiag.complies_with_is
+    # # assert hsiag.complies_with_hiis
     # assert hsiag.complies_with_hsis
