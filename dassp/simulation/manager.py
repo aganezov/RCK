@@ -9,8 +9,8 @@ from functools import lru_cache
 from dassp.core.structures import Adjacency, AdjacencyType, Haplotype, Phasing, HAPLOTYPE_PAIRS_TO_PHASING
 from dassp.simulation.parts import ChromosomeGenerator, MutationType, Mutation, reverse_segments, duplicate_segments, delete_segments, HAPLOTYPE, \
     translocate_segments, ChrPart, split_and_reassemble_chromosomes
-from core.structures import reverse_segment, propagate_haplotype_genome_to_positions
-from simulation.parts import duplicate_chromosome, duplicate_genome
+from dassp.core.structures import reverse_segment, propagate_haplotype_genome_to_positions
+from dassp.simulation.parts import duplicate_chromosome, duplicate_genome
 
 CHROMOSOMES_SIZE = 100
 AB = True
@@ -173,9 +173,9 @@ class SimulationManager(object):
         self.clones_cnt = clones_cnt
         self.ab = ab
         self.chromosomes_size = chrs_size
-        self.initial_genome = ChromosomeGenerator.generate_chromosomes(chromosome_size=self.chromosomes_size,
-                                                                       chromosomes_cnt=self.chromosomes_cnt,
-                                                                       ab=self.ab)
+        self.initial_genome = ChromosomeGenerator.generate_genome(chromosome_size=self.chromosomes_size,
+                                                                  chromosomes_cnt=self.chromosomes_cnt,
+                                                                  ab=self.ab)
 
 
 class ClonalSubClonalSimulationManager(SimulationManager):

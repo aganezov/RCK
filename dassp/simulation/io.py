@@ -3,7 +3,7 @@ import itertools
 
 import networkx as nx
 
-from dassp.core.structures import Segment
+from dassp.core.structures import Segment, Genome, Chromosome
 from dassp.simulation.manager import GENOMES, MUTATIONS, MUT_CONFIG, GENOME, HISTORY, Manager
 
 SEGMENTS_SEPARATOR = "segment_separator"
@@ -185,7 +185,7 @@ def read_phylogenetic_mutation_history_from_file(file_name, config=None):
     in_node_data = False
     with open(file_name, "rt") as source:
         current_genome_name = None
-        current_genome = []
+        current_genome = Genome()
         adj_list = []
         for line in source:
             line = line.strip()
@@ -218,7 +218,7 @@ def read_phylogenetic_mutation_history_from_file(file_name, config=None):
                 continue
             if line == config[GENOME_HEADER]:
                 current_genome_name = None
-                current_genome = []
+                current_genome = Genome()
                 in_node = True
                 continue
             if line == config[GENOME_FOOTER]:
@@ -299,7 +299,7 @@ def write_mutation_history_to_file(history, file_name, config=None):
 
 
 def parse_chromosome_string(string, config):
-    result = []
+    result = Chromosome()
     if string.startswith(config[CHROMOSOME_PREFIX]):
         string = string[len(config[CHROMOSOME_PREFIX]):]
     if string.endswith(config[CHROMOSOME_SUFFIX]) and len(config[CHROMOSOME_SUFFIX]) > 0:

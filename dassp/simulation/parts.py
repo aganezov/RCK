@@ -2,7 +2,7 @@ from collections import defaultdict, namedtuple
 from copy import deepcopy
 from enum import Enum
 
-from dassp.core.structures import Haplotype, Position, Strand, PositionType, Segment, reverse_segment
+from dassp.core.structures import Haplotype, Position, Strand, PositionType, Segment, reverse_segment, Genome, Chromosome
 
 CHROMOSOME_SIZE = 100
 CHROMOSOMES_CNT = 3
@@ -12,36 +12,45 @@ HAPLOTYPE = "haplotype"
 
 class ChromosomeGenerator(object):
     @classmethod
-    def generate_chromosomes(cls,
-                             chromosome_size=CHROMOSOME_SIZE,
-                             chromosomes_cnt=CHROMOSOMES_CNT,
-                             ab=True):
-        result = []
+    def generate_genome(cls,
+                        chromosome_size=CHROMOSOME_SIZE,
+                        chromosomes_cnt=CHROMOSOMES_CNT,
+                        ab=True,
+                        propagate_haplotypes_to_positions=True):
+        result = Genome()
         for chr_cnt in range(1, chromosomes_cnt + 1):
-            a_chromosome = cls.generate_chromosome(chromosome_size=chromosome_size, chr_name=str(chr_cnt))
+            a_chromosome = cls.generate_chromosome(chromosome_size=chromosome_size, chr_name=str(chr_cnt),
+                                                   propagate_haplotypes_to_positions=propagate_haplotypes_to_positions)
             result.append(a_chromosome)
             if ab:
-                b_chromosome = cls.get_b_chromosome_from_a(a_chromosome=a_chromosome)
+                b_chromosome = cls.get_b_chromosome_from_a(a_chromosome=a_chromosome,
+                                                           propagate_haplotypes_to_positions=propagate_haplotypes_to_positions)
                 result.append(b_chromosome)
         return result
 
     @classmethod
-    def generate_chromosome(cls, chromosome_size, chr_name, haplotype=Haplotype.A):
-        result = []
+    def generate_chromosome(cls, chromosome_size, chr_name, haplotype=Haplotype.A, propagate_haplotypes_to_positions=True):
+        result = Chromosome()
         for coordinate in range(chromosome_size):
-            star_position = Position(chromosome=chr_name, coordinate=coordinate * 2, strand=Strand.REVERSE,
-                                     ptype=PositionType.ARTIFICIAL)
+            start_position = Position(chromosome=chr_name, coordinate=coordinate * 2, strand=Strand.REVERSE,
+                                      ptype=PositionType.ARTIFICIAL)
             end_position = Position(chromosome=chr_name, coordinate=coordinate * 2 + 1, strand=Strand.FORWARD,
                                     ptype=PositionType.ARTIFICIAL)
-            segment = Segment(start_position=star_position, end_position=end_position, extra={HAPLOTYPE: haplotype})
+            if propagate_haplotypes_to_positions:
+                start_position.extra[HAPLOTYPE] = haplotype
+                end_position.extra[HAPLOTYPE] = haplotype
+            segment = Segment(start_position=start_position, end_position=end_position, extra={HAPLOTYPE: haplotype})
             result.append(segment)
         return result
 
     @classmethod
-    def get_b_chromosome_from_a(cls, a_chromosome):
+    def get_b_chromosome_from_a(cls, a_chromosome, propagate_haplotypes_to_positions=True):
         result = deepcopy(a_chromosome)
         for s in result:
             s.extra[HAPLOTYPE] = Haplotype.B
+            if propagate_haplotypes_to_positions:
+                s.start_position.extra[HAPLOTYPE] = Haplotype.B
+                s.end_position.extra[HAPLOTYPE] = Haplotype.B
         return result
 
 
@@ -69,7 +78,7 @@ def reverse_segments(chromosome, start_segment_index, end_segment_index, copy=Tr
                          "reversal is larger or equal to than the total number of segments {cnt} in the chromosomes"
                          "".format(si=start_segment_index, cnt=len(chromosome)))
     span_to_reverse = chromosome[start_segment_index:end_segment_index]
-    reversed_span = []
+    reversed_span = Chromosome()
     for s in span_to_reverse[::-1]:
         reversed_span.append(reverse_segment(s, copy=True))
     if copy:
@@ -211,9 +220,9 @@ def split_and_reassemble_chromosomes(chromosomes,
     ###
     # reassemble chromosomes from the parts as specified by the target_structure info
     ###
-    result = []
+    result = Genome()
     for structure in target_structures:
-        result_chromosome = []
+        result_chromosome = Chromosome()
         for part in structure:
             # chromothripsis can have an super-complicated signature and thus all underlying genome is (deep)copied
             #   just to make sure that all parts are reassembled (even if reversed and/or duplicated) in a undipendent fashion

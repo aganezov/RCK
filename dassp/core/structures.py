@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-from collections import Counter, namedtuple
+from collections import Counter, namedtuple, defaultdict
 from copy import deepcopy
 
 import networkx as nx
+import itertools
 
 from enum import Enum
 
@@ -31,6 +32,31 @@ class PositionType(Enum):
     ARTIFICIAL = 1
 
 
+class Haplotype(Enum):
+    A = "A"
+    B = "B"
+    UNKNOWN = "?"
+
+    def __str__(self):
+        return self.value
+
+    @classmethod
+    def from_string(cls, string):
+        if string not in ["A", "B", "?"]:
+            raise ValueError("Haplotype string has to be either \"A\", \"B\", or \"?\". \"{v}\" was supplied".format(v=string))
+        if string == "A":
+            return cls.A
+        if string == "B":
+            return cls.B
+        if string == "?":
+            return cls.UNKNOWN
+
+    def __lt__(self, other):
+        if not isinstance(other, Haplotype):
+            return False
+        return self.value < other.value
+
+
 class Position(object):
     STR_SEPARATOR = ":"
 
@@ -45,7 +71,7 @@ class Position(object):
     def __eq__(self, other):
         if not isinstance(other, Position):
             return False
-        return str(self) == str(other)
+        return hash(self) == hash(other)
 
     @property
     def idx(self):
@@ -66,11 +92,24 @@ class Position(object):
             return self.coordinate < other.coordinate
         return self.strand.value < other.strand.value
 
+    def less_than__non_hap(self, other):
+        if not isinstance(other, Position):
+            return False
+        if self.chromosome != other.chromosome:
+            if len(self.chromosome) != len(other.chromosome):
+                return len(self.chromosome) < len(other.chromosome)
+            return self.chromosome < other.chromosome
+        if self.coordinate != other.coordinate:
+            return self.coordinate < other.coordinate
+        return self.strand.value < other.strand.value
+
     def __le__(self, other):
         return self == other or self < other
 
     def __hash__(self):
-        return hash(str(self))
+        if self.is_haplotype_specific:
+            return hash(self.stable_id_hap)
+        return hash(self.stable_id_non_hap)
 
     def __repr__(self):
         if self.is_haplotype_specific:
@@ -96,6 +135,50 @@ class Position(object):
     @property
     def is_haplotype_specific(self):
         return HAPLOTYPE in self.extra
+
+    def get_haplotype(self, default=Haplotype.A):
+        if self.is_haplotype_specific:
+            return self.haplotype
+        return default
+
+    @property
+    def haplotype(self):
+        if not self.is_haplotype_specific:
+            raise ValueError()
+        return self.extra[HAPLOTYPE]
+
+    @property
+    def stable_id_non_hap(self):
+        return "{chrom}{sep}{strand}{coord}".format(chrom=self.chromosome,
+                                                    strand=str(self.strand),
+                                                    coord=self.coordinate,
+                                                    sep=self.STR_SEPARATOR)
+
+    @property
+    def stable_id_hap(self):
+        if not self.is_haplotype_specific:
+            raise ValueError()
+        return self.id_hap_string_from_elements(chrom=self.chromosome,
+                                                strand=str(self.strand),
+                                                coord=self.coordinate,
+                                                sep=self.STR_SEPARATOR,
+                                                hap=str(self.haplotype))
+
+    @classmethod
+    def id_hap_string_from_elements(cls, chrom, hap, strand, coord, sep=None):
+        if sep is None:
+            sep = cls.STR_SEPARATOR
+        return "{chrom}{sep}{haplotype}{sep}{strand}{coord}".format(chrom=str(chrom),
+                                                                    strand=str(strand),
+                                                                    coord=str(coord),
+                                                                    sep=sep,
+                                                                    haplotype=str(hap))
+
+    def get_non_hap_copy(self):
+        result = deepcopy(self)
+        if result.is_haplotype_specific:
+            del result.extra[HAPLOTYPE]
+        return result
 
 
 class PositionCluster(object):
@@ -127,31 +210,6 @@ class PositionCluster(object):
         return len([p for p in self.positions if p.strand == Strand.REVERSE])
 
 
-class Haplotype(Enum):
-    A = "A"
-    B = "B"
-    UNKNOWN = "?"
-
-    def __str__(self):
-        return self.value
-
-    @classmethod
-    def from_string(cls, string):
-        if string not in ["A", "B", "?"]:
-            raise ValueError("Haplotype string has to be either \"A\", \"B\", or \"?\". \"{v}\" was supplied".format(v=string))
-        if string == "A":
-            return cls.A
-        if string == "B":
-            return cls.B
-        if string == "?":
-            return cls.UNKNOWN
-
-    def __lt__(self, other):
-        if not isinstance(other, Haplotype):
-            return False
-        return self.value < other.value
-
-
 class Phasing(Enum):
     AA = (Haplotype.A, Haplotype.A)
     AB = (Haplotype.A, Haplotype.B)
@@ -166,6 +224,11 @@ class Phasing(Enum):
     def __str__(self):
         return "{h1}{h2}".format(h1=str(self.value[0]), h2=str(self.value[1]))
 
+    @staticmethod
+    def flip(phasing):
+        h1, h2 = phasing.value
+        return haplotype_pair_to_phasing(h1=h2, h2=h1)
+
 
 HAPLOTYPE_PAIRS_TO_PHASING = {entry.value: entry for entry in Phasing}
 
@@ -176,6 +239,10 @@ def haplotype_pair_to_phasing(h1, h2):
 
 def phasing_to_haplotype_pair(phasing):
     return phasing.value
+
+
+def flipped_phasing(phasing):
+    return Phasing.flip(phasing=phasing)
 
 
 class Segment(object):
@@ -190,6 +257,8 @@ class Segment(object):
             raise ValueError("START position coordinate has to be less than the END position coordinate")
         if start_position.chromosome != end_position.chromosome:
             raise ValueError("Segment's START and END position has to come from the same chromosome")
+        if start_position.is_haplotype_specific and end_position.is_haplotype_specific and start_position.haplotype == end_position.haplotype:
+            raise ValueError("Haplotypes for segment do not match")
         self.start_position = start_position
         self.end_position = end_position
         self.extra = extra if extra is not None else {}
@@ -208,12 +277,14 @@ class Segment(object):
         return self._idx
 
     def __hash__(self):
-        return hash(self.idx)
+        if self.is_haplotype_specific:
+            return hash(self.stable_id_hap)
+        return hash(self.stable_id_non_hap)
 
     def __eq__(self, other):
         if not isinstance(other, Segment):
             return False
-        return self.idx == other.idx
+        return hash(self) == hash(other)
 
     @property
     def chromosome(self):
@@ -263,6 +334,61 @@ class Segment(object):
             segment.start_position, segment.end_position = segment.end_position, segment.start_position
         return segment
 
+    @property
+    def is_haplotype_specific(self):
+        if HAPLOTYPE in self.extra:
+            return True
+        if self.start_position.is_haplotype_specific and \
+                self.end_position.is_haplotype_specific and \
+                self.start_position.haplotype == self.end_position.haplotype:
+            return True
+        return False
+
+    @property
+    def haplotype(self):
+        if not self.is_haplotype_specific:
+            raise ValueError()
+        if HAPLOTYPE in self.extra:
+            return self.extra[HAPLOTYPE]
+        return self.start_position.haplotype
+
+    def get_haplotype(self, default=Haplotype.A):
+        if self.is_haplotype_specific:
+            return self.haplotype
+        return default
+
+    @property
+    def stable_id_non_hap(self):
+        sp, ep = self.start_position, self.end_position
+        if ep.less_than__non_hap(sp):
+            sp, ep = ep, sp
+        return "{chrom}{repr_separator}{start}{coord_separator}{end}".format(chrom=self.chromosome,
+                                                                             start=sp.coordinate,
+                                                                             end=ep.coordinate,
+                                                                             repr_separator=self.STR_REPR_SEPARATOR,
+                                                                             coord_separator=self.STR_COORD_SEPARATOR)
+
+    @property
+    def stable_id_hap(self):
+        if not self.is_haplotype_specific:
+            raise ValueError()
+        sp, ep = tuple(sorted([self.start_position, self.end_position]))
+        hap = self.haplotype
+        return "{chrom}{repr_separator}{haplotype}{repr_separator}{start}{coord_separator}{end}".format(chrom=self.chromosome,
+                                                                                                        start=sp.coordinate,
+                                                                                                        end=ep.coordinate,
+                                                                                                        haplotype=str(hap),
+                                                                                                        repr_separator=self.STR_REPR_SEPARATOR,
+                                                                                                        coord_separator=self.STR_COORD_SEPARATOR)
+
+    def get_non_hap_copy(self):
+        is_reversed = self.is_reversed
+        result = self.__class__(start_position=self.start_position.get_non_hap_copy(),
+                                end_position=self.end_position.get_non_hap_copy())
+        if is_reversed:
+            reverse_segment(segment=result, copy=False)
+        return result
+
 
 class PhylogenyTree(object):
     def __init__(self, tree, tree_root):
@@ -278,9 +404,8 @@ class AdjacencyType(Enum):
 
 
 class Adjacency(object):
-    def __init__(self, position1, position2, adjacency_type=None, idx=None, extra=None):
-        if adjacency_type is None:
-            adjacency_type = AdjacencyType.NOVEL
+    def __init__(self, position1, position2, adjacency_type=AdjacencyType.NOVEL, idx=None, extra=None):
+
         if position1 <= position2:
             self.position1 = position1
             self.position2 = position2
@@ -315,6 +440,91 @@ class Adjacency(object):
 
     def __str__(self):
         return "[{p1}]-[{p2}]".format(p1=str(self.position1), p2=str(self.position2))
+
+    @property
+    def is_sorted_non_phased(self):
+        return not self.position2.less_than__non_hap(other=self.position1)
+
+    @property
+    def is_sorted_phased(self):
+        if not self.is_phased:
+            raise ValueError()
+        if self.position1.chromosome != self.position2.chromosome:
+            if len(self.position1.chromosome) != len(self.position2.chromosome):
+                return len(self.position1.chromosome) < len(self.position2.chromosome)
+            return self.position1.chromosome < self.position2.chromosome
+        phasing = self.phasing
+        if phasing.value[0] != phasing.value[1]:
+            return phasing.value[0] < phasing.value[1]
+        if self.position1.coordinate != self.position2.coordinate:
+            return self.position1.coordinate < self.position2.coordinate
+        return self.position1.strand.value < self.position2.strand.value
+
+    @property
+    def is_phased(self):
+        return PHASING in self.extra or (self.position1.is_haplotype_specific and self.position2.is_haplotype_specific)
+
+    @property
+    def phasing(self):
+        if not self.is_phased:
+            raise ValueError()
+        if PHASING in self.extra:
+            return self.extra[PHASING]
+        return haplotype_pair_to_phasing(h1=self.position1.haplotype, h2=self.position2.haplotype)
+
+    @property
+    def stable_phasing(self):
+        phasing = self.phasing
+        if self.position1 > self.position2:
+            return flipped_phasing(phasing=phasing)
+        return phasing
+
+    def get_phasing(self, sort=True, default=Phasing.AA):
+        if not self.is_phased:
+            return default
+        if sort:
+            return self.stable_phasing
+        return self.phasing
+
+    @property
+    def stable_id_non_phased(self):
+        p1_id, p2_id = self.position1.stable_id_non_hap, self.position2.stable_id_non_hap
+        if self.position2.less_than__non_hap(self.position1):
+            p1_id, p2_id = p2_id, p1_id
+        return "[{p1}]-[{p2}]".format(p1=p1_id, p2=p2_id)
+
+    @property
+    def id_non_phased(self):
+        p1_id, p2_id = self.position1.stable_id_non_hap, self.position2.stable_id_non_hap
+        return "[{p1}]-[{p2}]".format(p1=p1_id, p2=p2_id)
+
+    @property
+    def stable_id_phased(self):
+        if not self.is_phased:
+            raise ValueError()
+        phasing = self.phasing
+        p1, p2 = self.position1, self.position2
+        if p1 > p2:
+            phasing = flipped_phasing(phasing=phasing)
+            p1, p2 = p2, p1
+        p1_id = Position.id_hap_string_from_elements(chrom=p1.chromosome, hap=phasing.value[0], strand=p1.strand, coord=p1.coordinate)
+        p2_id = Position.id_hap_string_from_elements(chrom=p2.chromosome, hap=phasing.value[1], strand=p2.strand, coord=p2.coordinate)
+        return "[{p1}]-[{p2}]".format(p1=p1_id, p2=p2_id)
+
+    @property
+    def id_phased(self):
+        if not self.is_phased:
+            raise ValueError()
+        phasing = self.phasing
+        p1, p2 = self.position1, self.position2
+        p1_id = Position.id_hap_string_from_elements(chrom=p1.chrom, hap=phasing.value[0], strand=p1.strand, coord=p1.coord)
+        p2_id = Position.id_hap_string_from_elements(chrom=p2.chrom, hap=phasing.value[1], strand=p2.strand, coord=p2.coord)
+        return "[{p1}]-[{p2}]".format(p1=p1_id, p2=p2_id)
+
+    def get_non_phased_copy(self):
+        return self.__class__(position1=self.position1.get_non_hap_copy(),
+                              position2=self.position2.get_non_hap_copy(),
+                              adjacency_type=self.adjacency_type)
 
 
 class SegmentCopyNumber(object):
@@ -384,10 +594,247 @@ SegmentCNRecord = SegmentCopyNumberRecord
 SCNR = SegmentCNRecord
 
 
+class SegmentCopyNumberProfile(object):
+
+    def __init__(self):
+        self.records = defaultdict(dict)
+
+    def set_cn_record(self, sid, hap, cn, check_cn_value=False):
+        if check_cn_value and cn < 0:
+            raise ValueError()
+        self.records[sid][hap] = cn
+
+    def set_cn_record_for_segment(self, segment, cn, haplotype=Haplotype.A, check_cn_value=False):
+        haplotype = segment.get_haplotype(default=haplotype)
+        sid = segment.stable_id_non_hap
+        self.set_cn_record(sid=sid, hap=haplotype, cn=cn, check_cn_value=check_cn_value)
+
+    def get_hap_aware_cn_by_seg_and_hap(self, segment, haplotype, default=0):
+        return self.get_cn(sid=segment.stable_id_non_hap, haplotype=haplotype, default=default)
+
+    def get_hap_aware_cn_by_hap_aware_seg(self, segment, default=0):
+        if not segment.is_haplotype_specific:
+            raise ValueError()
+        return self.get_hap_aware_cn_by_seg_and_hap(segment=segment, haplotype=segment.haplotype, default=default)
+
+    def get_non_hap_aware_cn_by_seg(self, segment, default=0):
+        return self.get_combined_cn(sid=segment.stable_id_non_hap, default=default)
+
+    def get_cn(self, sid, haplotype, default=0):
+        if not self.has_record(sid=sid, haplotype=haplotype):
+            return default
+        return self.records[sid][haplotype]
+
+    def get_combined_cn(self, sid, default=0):
+        if not self.has_any_hap_record(sid=sid):
+            return default
+        result = 0
+        for haplotype in Haplotype:
+            if haplotype in self.records[sid]:
+                result += self.records[sid][haplotype]
+        return result
+
+    def has_any_hap_record(self, sid):
+        if sid not in self.records:
+            return False
+        for haplotype in Haplotype:
+            if haplotype in self.records[sid]:
+                return True
+        return False
+
+    def has_record(self, sid, haplotype):
+        return sid in self.records and haplotype in self.records[sid]
+
+    def has_record_for_non_hap_aware_seg(self, segment):
+        return self.has_any_hap_record(sid=segment.stable_id_non_hap)
+
+    def has_record_for_hap_aware_seg_by_hap_aware_seg(self, segment):
+        return self.has_record(sid=segment.stable_id_non_hap, haplotype=segment.haplotype)
+
+    def has_record_for_hap_aware_seg_by_seg_and_hap(self, segment, haplotype):
+        return self.has_record(sid=segment.stable_id_non_hap, haplotype=haplotype)
+
+    @classmethod
+    def from_genome(cls, genome, default_haplotype=Haplotype.A):
+        result = cls()
+        for segment in genome.iter_segments():
+            haplotype = segment.get_haplotype(default=default_haplotype)
+            current_value = result.get_hap_aware_cn_by_seg_and_hap(segment=segment, haplotype=haplotype, default=0)
+            result.set_cn_record_for_segment(segment=segment, cn=current_value + 1, haplotype=haplotype)
+        return result
+
+    def sid_keys(self):
+        return self.records.keys()
+
+    def sid_hap_pairs(self):
+        for sid in self.records:
+            for hap in self.records[sid]:
+                yield sid, hap
+
+
+class AdjacencyCopyNumberProfile(object):
+    def __init__(self):
+        self.records = defaultdict(dict)
+
+    def _set_cn_record(self, aid, phasing, cn, check_cn_value=False):
+        if check_cn_value and cn < 0:
+            raise ValueError()
+        self.records[aid][phasing] = cn
+
+    def set_cnt_record_for_adjacency(self, adjacency, cn, phasing=Phasing.AA, check_cn_value=False):
+        phasing = adjacency.get_phasing(sort=True, default=phasing)
+        aid = adjacency.stable_id_non_phased
+        self._set_cn_record(aid=aid, phasing=phasing, cn=cn, check_cn_value=check_cn_value)
+
+    def get_phase_aware_cn_by_adj_and_phasing(self, adjacency, phasing, default=0):
+        aid = adjacency.stable_id_non_phased
+        phasing = phasing if adjacency.is_sorted_non_phased else flipped_phasing(phasing=phasing)
+        return self.get_cn(aid=aid, phasing=phasing, default=default)
+
+    def get_phase_aware_cn_by_phased_adj(self, adjacency, default=0):
+        if not adjacency.is_phased:
+            raise ValueError()
+        aid = adjacency.stable_id_non_phased
+        phasing = adjacency.stable_phasing
+        return self.get_cn(aid=aid, phasing=phasing, default=default)
+
+    def get_cn(self, aid, phasing, default=0):
+        if not self.has_record(aid=aid, phasing=phasing):
+            return default
+        return self.records[aid][phasing]
+
+    def get_combined_cn(self, aid, default=0):
+        if not self.has_any_phase_record(aid=aid):
+            return default
+        result = 0
+        for phasing in Phasing:
+            if phasing in self.records[aid]:
+                result += self.records[aid][phasing]
+        return result
+
+    def has_record(self, aid, phasing):
+        return aid in self.records and phasing in self.records[aid]
+
+    def has_any_phase_record(self, aid):
+        if aid not in self.records:
+            return False
+        for phasing in Phasing:
+            if phasing in self.records[aid]:
+                return True
+        return False
+
+    def has_any_record_for_non_phased_adj(self, adjacency):
+        return self.has_any_phase_record(aid=adjacency.stable_id_non_phased)
+
+    def record_for_phased_adj_by_phased_adj(self, adjacency):
+        if not adjacency.is_phased:
+            raise ValueError()
+        return self.has_record(aid=adjacency.stable_id_non_phased, phasing=adjacency.stable_phasing)
+
+    def has_record_for_phased_adj_by_adj_and_phasing(self, adjacency, phasing):
+        aid = adjacency.stable_id_non_phased
+        phasing = phasing if adjacency.is_sorted_non_phased else flipped_phasing(phasing)
+        return self.has_record(aid=aid, phasing=phasing)
+
+    @classmethod
+    def from_genome(cls, genome, default_phasing=Phasing.AA):
+        result = cls()
+        for adjacency in genome.iter_adjacencies():
+            phasing = adjacency.get_phasing(sort=False, default=default_phasing)
+            current_value = result.get_phase_aware_cn_by_adj_and_phasing(adjacency=adjacency, phasing=phasing, default=0)
+            result.set_cnt_record_for_adjacency(adjacency=adjacency, cn=current_value + 1, phasing=phasing)
+        return result
+
+    def aid_keys(self):
+        return self.records.keys()
+
+    def aid_phase_pairs(self):
+        for aid in self.records:
+            for phasing in self.records[aid]:
+                yield aid, phasing
+
+
 class StructureProfile(object):
     def __init__(self, scn_profile=None, acn_profile=None):
         self.scn_profile = scn_profile
         self.acn_profile = acn_profile
+
+    @classmethod
+    def from_genome(cls, genome, default_haplotype=Haplotype.A, default_phasing=Phasing.AA):
+        result = cls()
+        result.scn_profile = SegmentCopyNumberProfile.from_genome(genome=genome, default_haplotype=default_haplotype)
+        result.acn_profile = AdjacencyCopyNumberProfile.from_genome(genome=genome, default_phasing=default_phasing)
+        return result
+
+
+class Chromosome(list):
+    """just a standard list of segments with a possibility for extended functionality later on"""
+
+    def iter_adjacencies(self, adjacency_type=AdjacencyType.NOVEL, inherit_phasing_from_positions=True):
+        lsg, rsg = itertools.tee(self)
+        next(rsg, None)
+        for ls, rs in zip(lsg, rsg):
+            p1, p2 = ls.end_position, rs.start_position
+            result = Adjacency(position1=p1, position2=p2, adjacency_type=adjacency_type)
+            if inherit_phasing_from_positions and p1.is_haplotype_specific and p2.is_haplotype_specific:
+                if p1 > p2:
+                    phasing = haplotype_pair_to_phasing(h1=p2.haplotype, h2=p1.haplotype)
+                else:
+                    phasing = haplotype_pair_to_phasing(h1=p1.haplotype, h2=p2.haplotype)
+                result.extra[PHASING] = phasing
+            yield result
+
+    def __add__(self, other):
+        return self.__class__(list.__add__(self, other))
+
+    def __mul__(self, other):
+        return self.__class__(list.__mul__(self, other))
+
+    def __getitem__(self, item):
+        result = list.__getitem__(self, item)
+        try:
+            return self.__class__(result)
+        except TypeError:
+            return result
+
+
+class Genome(list):
+    """Just a standard list of chromosomes (i.e., lists) with possibility for extended functionality"""
+
+    def iter_segments(self):
+        for chromosome in self:
+            for segment in chromosome:
+                yield segment
+
+    def iter_adjacencies(self, adjacency_type=AdjacencyType.NOVEL,
+                         inherit_phasing_from_positions=True):
+        for chromosome in self:
+            for adjacency in chromosome.iter_adjacencies(adjacency_type=adjacency_type,
+                                                         inherit_phasing_from_positions=inherit_phasing_from_positions):
+                yield adjacency
+
+    def __add__(self, other):
+        return self.__class__(list.__add__(self, other))
+
+    def __mul__(self, other):
+        return self.__class__(list.__mul__(self, other))
+
+    def __getitem__(self, item):
+        result = list.__getitem__(self, item)
+        if isinstance(result, Chromosome):
+            return result
+        try:
+            return self.__class__(result)
+        except TypeError:
+            return result
+
+    def iter_telomeres(self):
+        for chromosome in self:
+            ss, es = chromosome[0], chromosome[-1]
+            lt = ss.start_position
+            rt = es.end_position
+            yield lt
+            yield rt
 
 
 class AdjacencyGroup(object):
@@ -397,16 +844,14 @@ class AdjacencyGroup(object):
         self.idx = idx
 
 
-def get_segments_from_genome(genome, copy=True, make_all_non_reversed=True):
+def get_segments_list_from_genome(genome, copy=True, make_all_non_reversed=True):
     result = []
-    for chromosome in genome:
-        for s in chromosome:
-            v = s
-            if copy:
-                v = deepcopy(s)
-            if v.is_reversed and make_all_non_reversed:
-                reverse_segment(segment=v, copy=False)
-            result.append(v)
+    for s in genome.iter_segments():
+        if copy:
+            v = deepcopy(s)
+        if v.is_reversed and make_all_non_reversed:
+            reverse_segment(segment=v, copy=False)
+        result.append(v)
     return result
 
 
