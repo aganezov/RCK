@@ -123,7 +123,7 @@ MUTATION_CONFIG = {
         },
     PRESERVE_TELOMERES: True,
     HIIS: False,
-    HSIS: True,
+    HSIS: False,
     MUTATIONS_TYPES_SPECIFICATIONS: {
         MutationType.DELETION: {
             DELETION_TELOMERE: False,
@@ -276,14 +276,14 @@ def breakage_location_is_on_right_telomere(breakage_location):
 def suitable_for_breakage(breakage_location, config):
     bl = breakage_location
     if config[HIIS]:
-        if bl.be1 is not None and bl.be1.p in config[MUTATED_EXTREMITIES]:
+        if bl.be1.p is not None and bl.be1.p.stable_id_non_hap in config[MUTATED_EXTREMITIES]:
             return False
-        if bl.be2 is not None and bl.be2.p in config[MUTATED_EXTREMITIES]:
+        if bl.be2.p is not None and bl.be2.p.stable_id_non_hap in config[MUTATED_EXTREMITIES]:
             return False
     elif config[HSIS]:
-        if bl.be1 is not None and (bl.be1.p, bl.be1.h) in config[MUTATED_EXTREMITIES]:
+        if bl.be1.p is not None and (bl.be1.p, bl.be1.h) in config[MUTATED_EXTREMITIES]:
             return False
-        if bl.be2 is not None and (bl.be2.p, bl.be2.h) in config[MUTATED_EXTREMITIES]:
+        if bl.be2.p is not None and (bl.be2.p, bl.be2.h) in config[MUTATED_EXTREMITIES]:
             return False
     if config[PRESERVE_TELOMERES] and breakage_location_is_on_telomere(breakage_location=breakage_location):
         return False
@@ -296,18 +296,18 @@ def breakage_location_hashable_representation(breakage_location, config):
         return None, None
     if config[HIIS]:
         if bl.be1.p is None:
-            return None, bl.be2.p
+            return None, bl.be2.p.stable_id_non_hap
         elif bl.be2.p is None:
-            return bl.be1.p, None
+            return None, bl.be1.p.stable_id_non_hap
         else:
-            return (bl.be1.p, bl.be2.p) if bl.be1.p < bl.be2.p else (bl.be2.p, bl.be1.p)
+            return (bl.be2.p.stable_id_non_hap, bl.be1.p.stable_id_non_hap) if bl.be2.p.less_than__non_hap(bl.be1.p) else (bl.be1.p.stable_id_non_hap, bl.be2.p.stable_id_non_hap)
     if config[HSIS]:
         if bl.be1.p is None:
             return None, bl.be2
         elif bl.be2.p is None:
-            return bl.be2, None
+            return None, bl.be1
         else:
-            return (bl.be1, bl.be2) if bl.be1.p < bl.be2.p else (bl.be2, bl.be1)
+            return (bl.be2, bl.be1) if bl.be2.p.less_than__non_hap(bl.be1.p) else (bl.be1, bl.be2)
     return bl.be1, bl.be2
 
 
@@ -345,7 +345,7 @@ def get_available_breakage_locations(chromosome, config):
     # processing left telomere
     #
     ###
-    start_position, haplotype = chromosome[0].start_position, chromosome[0].extra[HAPLOTYPE]
+    start_position, haplotype = chromosome[0].start_position, chromosome[0].haplotype
     be1 = BreakageExtremity(p=None, h=None)
     be2 = BreakageExtremity(p=start_position, h=haplotype)
     b_location = BreakageLocation(be1=be1, be2=be2, bi=0)
@@ -358,10 +358,10 @@ def get_available_breakage_locations(chromosome, config):
     ###
     for i in range(len(chromosome) - 1):
         p1 = chromosome[i].end_position
-        p1_haplotype = chromosome[i].extra[HAPLOTYPE]
+        p1_haplotype = chromosome[i].haplotype
         be1 = BreakageExtremity(p=p1, h=p1_haplotype)
         p2 = chromosome[i + 1].start_position
-        p2_haplotype = chromosome[i].extra[HAPLOTYPE]
+        p2_haplotype = chromosome[i].haplotype
         be2 = BreakageExtremity(p=p2, h=p2_haplotype)
         b_location = BreakageLocation(be1=be1, be2=be2, bi=i + 1)
         if suitable_for_breakage(breakage_location=b_location, config=config):
@@ -371,7 +371,7 @@ def get_available_breakage_locations(chromosome, config):
     # processing right telomere
     #
     ###
-    end_position, haplotype = chromosome[-1].end_position, chromosome[-1].extra[HAPLOTYPE]
+    end_position, haplotype = chromosome[-1].end_position, chromosome[-1].haplotype
     be1 = BreakageExtremity(p=end_position, h=haplotype)
     be2 = BreakageExtremity(p=None, h=None)
     b_location = BreakageLocation(be1=be1, be2=be2, bi=len(chromosome))
@@ -1027,7 +1027,7 @@ def generate_mutated_genome(starting_genome, mutation_cnt, config=MUTATION_CONFI
                 for ep in [bl.be1, bl.be2]:
                     if ep.p is not None:
                         if config[HIIS]:
-                            config[MUTATED_EXTREMITIES].add(ep.p)
+                            config[MUTATED_EXTREMITIES].add(ep.p.stable_id_non_hap)
                         elif config[HSIS]:
                             config[MUTATED_EXTREMITIES].add((ep.p, ep.h))
         if save_intermediate_genome or mut_cnt == (mutation_cnt - 1):

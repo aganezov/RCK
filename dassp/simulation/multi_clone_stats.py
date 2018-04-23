@@ -1,14 +1,19 @@
 import os
+import sys
 import pprint
+import numpy as np
 from copy import deepcopy
 import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import argparse
+
 
 from dassp.core.graph import construct_hiag_inflate_from_haploid_data
-from dassp.core.structures import get_unique_haploid_telomeres, Phasing, get_novel_adjacencies_from_ref_and_mut_genomes
-from dassp.algo.ilp import SatModelSingleClone
+from dassp.core.structures import get_unique_haploid_telomeres, Phasing, get_novel_adjacencies_from_ref_and_mut_genomes, get_shuffled_clone_specific_scnp, \
+    segment_copy_number_tensors_are_compatible
+from dassp.algo.ilp import SatModelSingleClone, SatModelMultiClone
 from dassp.core.structures import SegmentCopyNumberProfile, get_unique_forward_haploid_segments, get_shuffled_scnp, get_unique_haploid_ref_and_novel_sorted_adjacencies
 from dassp.core.structures import StructureProfile
 from dassp.core.structures import get_telomeres_from_genome, strip_haplotype_from_positions
@@ -21,57 +26,44 @@ from dassp.simulation.manager import generate_random_phylogeny_tree, assign_refe
 from dassp.simulation.io import read_phylogenetic_mutation_history_from_file
 
 
-def genome_string_name_for_file(prefix, ab, mutation_cnt, config):
-    result = [str(prefix), str(mutation_cnt), "AB" if ab else "A", "HIIS" if config[HIIS] else ("HSIS" if config[HSIS] else "nIS")]
-    return "_".join(result) + ".txt"
-
-
-def main(chrs_cnt=5, chrs_size=300, ab=True, mutations_cnt=60, sim_genomes_cnt=100, path_prefix="dassp/simulation/sim_5_300_ab_HIIS_60", mut_config=None, io_config=None):
-    if mut_config is None:
-        mut_config = MUTATION_CONFIG
-    if io_config is None:
-        io_config = IO_CONFIG
-    initial_genome = ChromosomeGenerator.generate_genome(chromosome_size=chrs_size,
-                                                         chromosomes_cnt=chrs_cnt,
-                                                         ab=ab)
-    write_genome_to_file(genome=initial_genome, file_name=os.path.join(path_prefix, "reference.txt"), config=io_config)
-    for g_cnt in range(sim_genomes_cnt):
-        mutation_history = generate_mutated_genome(starting_genome=deepcopy(initial_genome),
-                                                   mutation_cnt=mutations_cnt,
-                                                   config=deepcopy(mut_config))
-        write_mutation_history_to_file(history=mutation_history,
-                                       file_name=os.path.join(path_prefix, genome_string_name_for_file(prefix=g_cnt,
-                                                                                                       ab=ab,
-                                                                                                       mutation_cnt=mutations_cnt,
-                                                                                                       config=mut_config)),
-                                       config=io_config)
-
-
 if __name__ == "__main__":
-    # main()
-    import sys
+    current_dir = os.path.dirname(os.path.realpath(__file__))
+    parser = argparse.ArgumentParser(description="Multi-clone stats on simulated datasets")
+    parser.add_argument("--start", type=int, default=0)
+    parser.add_argument("--end", type=int, default=2000)
+    parser.add_argument('--dataset-dir', default=os.path.join(current_dir, "instances", "hiis"))
+    parser.add_argument('--dataset-file-template', type=str, default="{cnt}_mut_history.txt")
+    args = parser.parse_args()
+
     segments_cnt = {}
     nov_adjacency_cnt = {}
     chromosomes_cnt = {}
-    for cnt in range(25):
-        print("\r{cnt}".format(cnt=cnt), flush=True, end="")
-        manager = read_phylogenetic_mutation_history_from_file(file_name="dassp/simulation/instances/hiis/{cnt}_mut_history.txt".format(cnt=str(cnt)))
+    type1 = 0
+    for cnt in range(args.start, args.end):
+        print("\r{t1}".format(t1=type1), flush=True, end="")
+        file_name = args.dataset_file_template.format(cnt=cnt)
+        full_file_name = os.path.join(args.dataset_dir, file_name)
+        manager = read_phylogenetic_mutation_history_from_file(file_name=full_file_name)
         manager.propagate_haplotypes_to_positions()
+
         ref_genome = manager.tree.nodes[manager.root][GENOME]
-        mut_genomes = {}
-        mgc = 0
-        # first_mutated_genome_name = list(manager.tree.neighbors(manager.root))[0]
-        # mut_genome = manager.tree.nodes[first_mutated_genome_name][GENOME]
-        for node in manager.tree:
-            if node == manager.root:
-                continue
-            mut_genomes[node] = manager.tree.nodes[node][GENOME]
-        # mut_genome = mut_genomes[0]
-    #     segments_cnt[cnt] = len(list(mut_genome.iter_segments()))
-    #     chromosomes_cnt[cnt] = len([c for c in mut_genome])
-    #     ref_adjacencies, nov_adjacencies = get_novel_adjacencies_from_ref_and_mut_genomes(ref_genome=ref_genome, mut_genome=mut_genome)
-    #     nov_adjacency_cnt[cnt] = len(nov_adjacencies)
-    #
+        for node in manager.tree.nodes():
+            if manager.tree.degree(node) > 2:
+                type1 += 1
+        # mut_genomes = {}
+
+        # for node in manager.tree:
+        #     if node == manager.root:
+        #         continue
+        #     mut_genomes[node] = manager.tree.nodes[node][GENOME]
+        #
+        # for mut_genome_name, mut_genome in mut_genomes.items():
+        #     idx = "{sid}_{gid}".format(sid=cnt, gid=mut_genome_name)
+        #     segments_cnt[idx] = len(list(mut_genome.iter_segments()))
+        #     chromosomes_cnt[idx] = len([c for c in mut_genome])
+        #     ref_adjacencies, nov_adjacencies = get_novel_adjacencies_from_ref_and_mut_genomes(ref_genome=ref_genome, mut_genome=mut_genome)
+        #     nov_adjacency_cnt[idx] = len(nov_adjacencies)
+
     # plt.figure(1, figsize=(10, 15))
     # plt.title("{cnt}".format(cnt=2000))
     # plt.subplot(311)
@@ -90,51 +82,99 @@ if __name__ == "__main__":
     #
     # plt.subplot(313)
     # values = list(chromosomes_cnt.values())
-    # bins = list(range(min(values), max(values) + 1, 5))
+    # bins = list(range(min(values), max(values) + 1, 1))
     # plt.hist(values, bins=bins, ec='black', align='left')
     # plt.xlabel("# of chromosomes", fontsize=14)
     # plt.ylabel("# of genomes", fontsize=14)
     # plt.tight_layout(pad=2)
     # plt.show()
-        #########
-        for mut_genome in mut_genomes:
-            print("\r{cnt}/{mgc}".format(cnt=cnt, mgc=mgc), end="", flush=True)
-            dipl_mut_telomeres = list(mut_genome.iter_telomeres())
-            dipl_ref_telomeres = list(ref_genome.iter_telomeres())
-            mut_scnp = SegmentCopyNumberProfile.from_genome(genome=mut_genome)
-            hapl_segments = get_unique_forward_haploid_segments(genome=ref_genome)
-            hapl_telomeres = get_unique_haploid_telomeres(genome=ref_genome)
-            shuffled_mut_scnp = get_shuffled_scnp(segment_copy_number_profile=mut_scnp, segments=hapl_segments)
-            ref_hapl_adjacencies, nov_hapl_adjacencies = get_unique_haploid_ref_and_novel_sorted_adjacencies(ref_genome=ref_genome, mut_genomes=[mut_genome])
-            hapl_adjacencies = ref_hapl_adjacencies + nov_hapl_adjacencies
-            model = SatModelSingleClone(hapl_segments=hapl_segments, hapl_adjacencies=hapl_adjacencies, scnp=shuffled_mut_scnp, hapl_telomeres=hapl_telomeres)
-            model.build_gurobi_model()
-            model.gm.setParam('OutputFlag', False)
-            model.solve_model()
-            inferred_scnp = model.get_scnp_from_model()
-            inferred_acnp = model.get_acnp_from_model()
-            for adj in ref_hapl_adjacencies:
-                assert inferred_acnp.get_phase_aware_cn_by_adj_and_phasing(adjacency=adj, phasing=Phasing.AB) == 0
-                assert inferred_acnp.get_phase_aware_cn_by_adj_and_phasing(adjacency=adj, phasing=Phasing.BA) == 0
-            for adj in nov_hapl_adjacencies:
-                present_ph = 0
-                cn = -1
-                for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]:
-                    if inferred_acnp.get_phase_aware_cn_by_adj_and_phasing(adjacency=adj, phasing=ph) != 0:
-                        present_ph += 1
-                        cn = inferred_acnp.get_phase_aware_cn_by_adj_and_phasing(adjacency=adj, phasing=ph)
-                assert present_ph == 1
-                assert cn > 0
-            inflated_hiag = construct_hiag_inflate_from_haploid_data(hapl_segments=hapl_segments, hapl_adjacencies=hapl_adjacencies)
-            inflated_hiag.assign_copy_numbers_from_scn_profile(scn_profile=inferred_scnp)
-            inflated_hiag.assign_copy_numbers_from_acn_profile(acn_profile=inferred_acnp)
-            assert inflated_hiag.represents_a_genome
-            inferred_telomeres = inflated_hiag.get_telomeres(check_cn_awareness=False)
-            assert len(set(inferred_telomeres)) == len(set(dipl_mut_telomeres))
-            for t in inferred_telomeres:
-                assert t in dipl_mut_telomeres
-            mgc += 1
-        #########
+
+
+
+    # for cnt in range(args.start, args.end):
+    #     print("\r{cnt}".format(cnt=cnt), flush=True, end="")
+    #     file_name = args.dataset_file_template.format(cnt=cnt)
+    #     full_file_name = os.path.join(args.dataset_dir, file_name)
+    #     manager = read_phylogenetic_mutation_history_from_file(file_name=full_file_name)
+    #     manager.propagate_haplotypes_to_positions()
+    #     ref_genome = manager.tree.nodes[manager.root][GENOME]
+    #
+    #     hapl_segments = get_unique_forward_haploid_segments(genome=ref_genome)
+    #
+    #     mut_genomes = {}
+    #     mgc = 0
+    #     for node in manager.tree:
+    #         if node == manager.root:
+    #             continue
+    #         mut_genomes[node] = manager.tree.nodes[node][GENOME]
+    #     mut_genomes_keys = np.random.choice(a=list(mut_genomes.keys()), size=args.clone_cnt, replace=False)
+    #     mut_genomes = {key: mut_genomes[key] for key in mut_genomes_keys}
+    #
+    #     mut_clone_specific_scnp = {}
+    #     for mut_genome_name, mut_genome in mut_genomes.items():
+    #         mut_clone_specific_scnp[mut_genome_name] = SegmentCopyNumberProfile.from_genome(genome=mut_genome)
+    #     shuffled_mut_clone_specific_scnp = get_shuffled_clone_specific_scnp(clone_specific_scnp=mut_clone_specific_scnp, segments=hapl_segments)
+    #
+    #     dipl_ref_telomeres = list(ref_genome.iter_telomeres())
+    #     dipl_mut_telomeres = []
+    #     for mut_genome in mut_genomes.values():
+    #         dipl_mut_telomeres.extend(list(mut_genome.iter_telomeres()))
+    #     hapl_telomeres = get_unique_haploid_telomeres(genome=ref_genome)
+    #     assert len(set(dipl_ref_telomeres)) == len(set(dipl_mut_telomeres))
+    #     for telomere in dipl_mut_telomeres:
+    #         assert telomere in dipl_ref_telomeres
+    #
+    #     ref_hapl_adjacencies, nov_hapl_adjacencies = get_unique_haploid_ref_and_novel_sorted_adjacencies(ref_genome=ref_genome, mut_genomes=list(mut_genomes.values()))
+    #     hapl_adjacencies = ref_hapl_adjacencies + nov_hapl_adjacencies
+    #
+    #     model = SatModelMultiClone(hapl_segments=hapl_segments, hapl_adjacencies=hapl_adjacencies, clone_specific_scnp=shuffled_mut_clone_specific_scnp, hapl_telomeres=hapl_telomeres)
+    #     model.build_gurobi_model()
+    #     if args.gurobi_silent:
+    #         model.gm.setParam("OutputFlag", False)
+    #     model.solve_model()
+    #     inferred_clone_specific_scnp = model.get_clone_specific_scnp_from_model()
+    #     inferred_clone_specific_acnp = model.get_clone_specific_acnp_from_models()
+    #
+    #     # checking that reference adjacencies don't have inconsistent (i.e., AB/BA phasing values)
+    #     for clone_id in mut_genomes_keys:
+    #         for adj in ref_hapl_adjacencies:
+    #             for ph in [Phasing.AB, Phasing.BA]:
+    #                 assert inferred_clone_specific_acnp[clone_id].get_phase_aware_cn_by_adj_and_phasing(adjacency=adj, phasing=ph) == 0
+    #
+    #     # checking that for every haploid novel adjacency exactly one underlying diploid novel adjacency has a positive values (across all clones)
+    #     for adj in nov_hapl_adjacencies:
+    #         cns = []
+    #         present_ph = 0
+    #         for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]:
+    #             inferred_cns = [inferred_clone_specific_acnp[clone_id].get_phase_aware_cn_by_adj_and_phasing(adjacency=adj, phasing=ph) for clone_id in mut_genomes_keys]
+    #             if any(map(lambda entry: entry >= 1, inferred_cns)):
+    #                 present_ph += 1
+    #                 cns = inferred_cns
+    #         assert present_ph == 1
+    #         assert sum(cns) > 0
+    #
+    #     # checking that self-loop adjacencies don't have AB/BA phasing
+    #     for adj in filter(lambda a: a.is_self_loop_hapl, nov_hapl_adjacencies):
+    #         for clone_id in mut_genomes_keys:
+    #             for ph in [Phasing.AB, Phasing.BA]:
+    #                 assert inferred_clone_specific_acnp[clone_id].get_phase_aware_cn_by_adj_and_phasing(adjacency=adj, phasing=ph) == 0
+    #
+    #     # checking that inferred clone specific segment copy number tensor is compatible with the real diploid segment copy number tensor
+    #     assert segment_copy_number_tensors_are_compatible(tensor1=mut_clone_specific_scnp, tensor2=inferred_clone_specific_scnp, segments=hapl_segments)
+    #
+    #     # checking if every non-telomere vertex is balanced and every telomere vertex is unbalanced.
+    #     for clone_id in mut_genomes_keys:
+    #         inflated_hiag = construct_hiag_inflate_from_haploid_data(hapl_segments=hapl_segments, hapl_adjacencies=hapl_adjacencies)
+    #         inflated_hiag.assign_copy_numbers_from_scn_profile(scn_profile=inferred_clone_specific_scnp[clone_id])
+    #         inflated_hiag.assign_copy_numbers_from_acn_profile(acn_profile=inferred_clone_specific_acnp[clone_id])
+    #         assert inflated_hiag.represents_a_genome
+    #         inferred_telomeres = inflated_hiag.get_telomeres(check_cn_awareness=False)
+    #         assert len(set(inferred_telomeres)) == len(set(dipl_ref_telomeres))
+    #         for telomere in inferred_telomeres:
+    #             assert telomere in dipl_ref_telomeres
+    #
+
+
     # sys.setrecursionlimit(10000)
     # for cnt in range(1800, 2000):
     #     print(cnt, end=" ", flush=True)

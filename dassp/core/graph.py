@@ -2,7 +2,8 @@ from copy import deepcopy
 
 import networkx as nx
 
-from dassp.core.structures import SegmentCopyNumberProfile, AdjacencyCopyNumberProfile, StructureProfile, Segment, Adjacency, AdjacencyType, HAPLOTYPE, Haplotype
+from dassp.core.structures import propagate_haplotype_segment_to_positions, propagate_phasing_adjacency_to_positions
+from dassp.core.structures import SegmentCopyNumberProfile, AdjacencyCopyNumberProfile, StructureProfile, Segment, Adjacency, AdjacencyType, HAPLOTYPE, Haplotype, Phasing, PHASING
 
 COPY_NUMBER = "copy_number"
 
@@ -588,8 +589,9 @@ class HaplotypeSpecificIntervalAdjacencyGraph(IntervalAdjacencyGraph):
 
     def assign_copy_numbers_from_acn_profile(self, acn_profile):
         for u, v, data in self.adjacency_edges(data=True, sort=True):
-            aid = data["object"].stable_id_non_phased
-            phasing = data["object"].stable_phasing
+            adj = data["object"]
+            aid = adj.stable_id_non_phased
+            phasing = adj.stable_phasing
             data[COPY_NUMBER] = acn_profile.get_cn(aid=aid, phasing=phasing, default=0)
 
 
@@ -645,6 +647,35 @@ def construct_hiag(ref_genome, mut_genomes):
     for adj in nov_adjacencies.values():
         result.add_adjacency_edge(adjacency=adj, sort=True, copy_adjacency=True)
     return result
+
+
+def construct_hiag_inflate_from_haploid_data(hapl_segments, hapl_adjacencies):
+    dip_ref_adjacencies = []
+    for adj in filter(lambda a: a.adjacency_type == AdjacencyType.REFERENCE, hapl_adjacencies):
+        for ph in [Phasing.AA, Phasing.BB]:
+            dip_adjacency = adj.get_non_phased_copy()
+            dip_adjacency.extra[PHASING] = ph
+            dip_ref_adjacencies.append(dip_adjacency)
+    dip_nov_adjacencies = []
+    for adj in filter(lambda a: a.adjacency_type == AdjacencyType.NOVEL, hapl_adjacencies):
+        for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]:
+            dip_adjacency = adj.get_non_phased_copy()
+            dip_adjacency.extra[PHASING] = ph
+            dip_nov_adjacencies.append(dip_adjacency)
+    dip_segments = []
+    for segment in hapl_segments:
+        for h in [Haplotype.A, Haplotype.B]:
+            dip_segment = segment.get_non_hap_copy()
+            dip_segment.extra[HAPLOTYPE] = h
+            dip_segments.append(dip_segment)
+    for s in dip_segments:
+        propagate_haplotype_segment_to_positions(segment=s, inplace=True)
+    all_dip_adjacencies = dip_ref_adjacencies + dip_nov_adjacencies
+    for a in all_dip_adjacencies:
+        propagate_phasing_adjacency_to_positions(adjacency=a, inplace=True)
+    hiag = HaplotypeSpecificIntervalAdjacencyGraph(segments=dip_segments, adjacencies=dip_ref_adjacencies + dip_nov_adjacencies)
+    hiag.build_graph()
+    return hiag
 
 
 construct_hsiag = construct_hiag
