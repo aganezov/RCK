@@ -1,21 +1,22 @@
 import argparse
 import os
+import re
 import sys
 import shutil
 import gurobi as g
 
-from core.io import write_scn_tensor, write_acnt
+
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
-from dassp.core.io import read_scn_tensor, get_all_clone_ids_from_dasck_scnt_file, read_novel_adjacencies, read_positions, read_segments, read_scn_boundaries
+from dassp.core.io import read_scn_tensor, get_all_clone_ids_from_dasck_scnt_file, read_novel_adjacencies, read_positions, read_segments, read_scn_boundaries, write_scn_tensor, write_acnt
 from dassp.core.preprocess import positions_aligned, nas_groups_aligned
 from dassp.core.structures import get_segments_for_fragments_ids_dict, get_ref_telomeres_from_segments, get_ref_adjacencies_from_segments, construct_nas_groups
 from dassp.algo.ilp import OptModelMultiClone
 
 
 def get_full_path(path):
-    return os.path.expanduser(os.path.abspath(path))
+    return os.path.abspath(os.path.expanduser(path))
 
 
 def create_dir_is_doesnt_exist(dirpath):
@@ -33,6 +34,7 @@ if __name__ == "__main__":
     parser.add_argument("--fragments", default="")
     parser.add_argument("--scn-boundaries", default="")
     parser.add_argument("--trees", default="")
+    parser.add_argument("--no-allow-unit-segments", action="store_false", dest="allow_unit_segments")
     ###
     pre_group = parser.add_argument_group()
     pre_group.add_argument("--no-pre", action="store_false", dest="do_preprocess")
@@ -75,13 +77,19 @@ if __name__ == "__main__":
     run_group = parser.add_argument_group()
     run_group.add_argument("--no-run", action="store_false", dest="do_run")
     run_group.add_argument("--run-no-trees", action="store_false", dest="run_trees")
-    run_group.add_argument("--run-g-mip-gap", type=float, default=0.01)
+    run_group.add_argument("--run-g-mip-gap", type=float, default=0.015)
+    run_group.add_argument("--run-g-time-limit", type=int, default=28800)
     run_group.add_argument("--run-nas-fps", type=str, default="0.0,0.25,0.5")
     ###
+    output_group = parser.add_argument_group()
+    output_group.add_argument("--o-prefix-name", type=str, dest="out_prefix_name", default="")
+    output_group.add_argument("--o-tree-dir-template", type=str, dest="out_tree_dir_basename_template", default="tree_{tree_id}")
+    output_group.add_argument("--o-scnt-basename-template", type=str, dest="out_scnt_basename_template", default="{prefix}.{fp:.2f}.scnt.tsv")
+    output_group.add_argument("--o-acnt-basename-template", type=str, dest="out_acnt_basename_template", default="{prefix}.{fp:.2f}.acnt.tsv")
     args = parser.parse_args()
     scnt_file_path = get_full_path(path=args.scnt)
-    clone_ids = get_all_clone_ids_from_dasck_scnt_file(file_name=scnt_file_path)
-    segments, scnt = read_scn_tensor(file_name=scnt_file_path, clone_ids=clone_ids)
+    clone_ids = get_all_clone_ids_from_dasck_scnt_file(file_name=scnt_file_path, allow_unit_segments=args.allow_unit_segments)
+    segments, scnt = read_scn_tensor(file_name=scnt_file_path, clone_ids=clone_ids, allow_unit_segments=args.allow_unit_segments)
     nas_file_path = get_full_path(path=args.nas)
     nas = read_novel_adjacencies(file_name=nas_file_path)
     workdir_path = get_full_path(path=args.workdir)
@@ -98,7 +106,8 @@ if __name__ == "__main__":
     fragments_file_path = None if args.fragments == "" else get_full_path(path=args.fragments)
     fragments = None if fragments_file_path is None else read_segments(file_name=fragments_file_path)
     scn_boundaries_file_path = None if args.scn_boundaries == "" else get_full_path(path=args.scn_boundaries)
-    scn_boundaries = None if scn_boundaries_file_path is None else read_scn_boundaries(file_name=scn_boundaries_file_path, segments=segments, clone_ids=clone_ids)
+    scn_boundaries = None if scn_boundaries_file_path is None else read_scn_boundaries(file_name=scn_boundaries_file_path, segments=segments, clone_ids=clone_ids,
+                                                                                       allow_unit_segments=args.allow_unit_segments)
     trees_file_path = None if args.trees == "" else get_full_path(path=args.trees)
     nas_fps = list(map(lambda entry: float(entry), args.run_nas_fps.split(",")))
     # TODO: complete
@@ -167,11 +176,12 @@ if __name__ == "__main__":
             trees = [None]
         else:
             trees = [None] + trees
-        for nas_fp in nas_fps:
-            fp_dir_path = os.path.join(workdir_path, str(nas_fp))
-            create_dir_is_doesnt_exist(dirpath=fp_dir_path)
-            for tree in trees:
-                instance_dir_path = os.path.join(fp_dir_path, str(tree))
+        for tree_cnt, tree in enumerate(trees):
+            tree_dir_basename = args.out_tree_dir_basename_template.format(tree_id=tree_cnt)
+            tree_dir_path = os.path.join(workdir_path, tree_dir_basename)
+            create_dir_is_doesnt_exist(dirpath=tree_dir_path)
+            for nas_fp in nas_fps:
+                instance_dir_path = os.path.join(tree_dir_path, str(nas_fp))
                 create_dir_is_doesnt_exist(dirpath=instance_dir_path)
                 gurobi_log_path = os.path.join(instance_dir_path, "gurobi.log")
                 ilp_model = OptModelMultiClone(hapl_segments=segments,
@@ -186,20 +196,26 @@ if __name__ == "__main__":
                 ilp_model.gm.setParam("MIPGap", args.run_g_mip_gap)
                 ilp_model.gm.setParam("MIPGapAbs", args.run_g_mip_gap)
                 ilp_model.gm.setParam("LogFile", gurobi_log_path)
+                ilp_model.gm.setParam("TimeLimit", args.run_g_time_limit)
                 ilp_model.solve_model()
 
                 status = ilp_model.gm.status
-                if status == g.GRB.Status.OPTIMAL:
-                    print("Optimal")
+                if status == g.GRB.Status.OPTIMAL or status == g.GRB.Status.TIME_LIMIT:
                     inferred_scnt = ilp_model.get_clone_specific_scnp_from_model()
                     inferred_acnt = ilp_model.get_clone_specific_acnp_from_model()
-                    scnt_file_path = os.path.join(instance_dir_path, "scnt.dasck.tsv")
+                    scnt_base_name = args.out_scnt_basename_template.format(prefix=args.out_prefix_name, fp=nas_fp)
+                    if scnt_base_name.startswith("."):
+                        scnt_base_name = scnt_base_name[1:]
+                    scnt_base_name = re.sub("\.+", ".", scnt_base_name)
+                    scnt_file_path = os.path.join(instance_dir_path, scnt_base_name)
                     write_scn_tensor(file_name=scnt_file_path, scnt=inferred_scnt, segments=segments)
-                    acnt_file_path = os.path.join(instance_dir_path, "acnt.dasck.tsv")
+                    acnt_base_name = args.out_acnt_basename_template.format(prefix=args.out_prefix_name, fp=nas_fp)
+                    if acnt_base_name.startswith("."):
+                        acnt_base_name = acnt_base_name[1:]
+                    acnt_base_name = re.sub("\.+", ".", acnt_base_name)
+                    acnt_file_path = os.path.join(instance_dir_path, acnt_base_name)
                     write_acnt(file_name=acnt_file_path, acnt=inferred_acnt, adjacencies=adjacencies, output_reference=True)
                 elif status == g.GRB.Status.INFEASIBLE:
-                    print("Infeasible")
                     ilp_model.gm.computeIIS()
-                    ilp_path = os.path.join(workdir_path)
-                    ilp_model.gm.write()
-                print("Done")
+                    ilp_path = os.path.join(instance_dir_path, "model.ilp")
+                    ilp_model.gm.write(ilp_path)

@@ -2,7 +2,7 @@ import argparse
 import os
 
 import sys
-
+from copy import deepcopy
 
 current_file_level = 2
 current_dir = os.path.dirname(os.path.realpath(__file__))
@@ -12,7 +12,7 @@ sys.path.append(current_dir)
 
 
 from dassp.core.io import read_scn_tensor, read_novel_adjacencies, get_all_clone_ids_from_dasck_scnt_file, read_positions, write_segments, write_scn_tensor
-from dassp.core.structures import refined_segments_and_tensor, removed_short_nas, refined_nas, violates_is, refine_segments_and_nas_telomeres
+from dassp.core.structures import refined_scnt, removed_short_nas, refined_nas, violates_is, refined_scnt_with_nas_and_telomeres
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -30,7 +30,8 @@ if __name__ == "__main__":
     parser.add_argument("--no-fill-gaps-fragments", action="store_false", dest="fill_gaps_fragments")
     parser.add_argument("--fragments-max-fill-gap", type=int, default=1000000)
     parser.add_argument("--telomeres-file", default="")
-    parser.add_argument("--tel-no-human-centromeres", action="store_false", dest="tel_use_centromeres")
+    parser.add_argument("--tel-human-centromeres", action="store_true", dest="tel_use_centromeres")
+    parser.add_argument("--ex-allow-unit-segments", action="store_true", dest="allow_unit_segments")
     parser.add_argument("refined_scnt_file")
     parser.add_argument("refined_fragments_file")
     args = parser.parse_args()
@@ -38,12 +39,14 @@ if __name__ == "__main__":
     dasck_scnt_input_file_path = os.path.expanduser(args.scnt_file)
     dasck_scnt_input_file_path = os.path.abspath(dasck_scnt_input_file_path)
     if len(clone_ids) == 0:
-        clone_ids = get_all_clone_ids_from_dasck_scnt_file(file_name=dasck_scnt_input_file_path)
-    segments, scnt = read_scn_tensor(file_name=dasck_scnt_input_file_path, clone_ids=clone_ids)
+        clone_ids = get_all_clone_ids_from_dasck_scnt_file(file_name=dasck_scnt_input_file_path,
+                                                           allow_unit_segments=args.allow_unit_segments)
+    segments, scnt = read_scn_tensor(file_name=dasck_scnt_input_file_path, clone_ids=clone_ids,
+                                     allow_unit_segments=args.allow_unit_segments)
     if args.merge_fragments or args.fill_gaps_fragments:
-        segments, scnt = refined_segments_and_tensor(segments=segments, tensor=scnt,
-                                                     merge_fragments=args.merge_fragments, max_merge_gap=args.fragments_max_merge_gap,
-                                                     fill_gaps=args.fill_gaps_fragments, max_fill_gap=args.fragments_max_fill_gap)
+        segments, scnt = refined_scnt(segments=segments, tensor=scnt,
+                                      merge_fragments=args.merge_fragments, max_merge_gap=args.fragments_max_merge_gap,
+                                      fill_gaps=args.fill_gaps_fragments, max_fill_gap=args.fragments_max_fill_gap)
     dasck_nas_input_filepath = os.path.expanduser(args.nas_file)
     dasck_nas_input_filepath = os.path.abspath(dasck_nas_input_filepath)
     nas = read_novel_adjacencies(file_name=dasck_nas_input_filepath)
@@ -59,6 +62,11 @@ if __name__ == "__main__":
         telomeres = read_positions(file_name=dasck_telomeres_input_filepath)
     else:
         telomeres = None
-    fragments, segments, scnt = refine_segments_and_nas_telomeres(segments=segments, scnt=scnt, novel_adjacencies=nas, telomeres=telomeres)
-    write_segments(file_name=args.refined_fragments_file, segments=fragments)
-    write_scn_tensor(file_name=args.refined_scnt_file, scnt=scnt, segments=segments)
+    fragments = deepcopy(segments)
+    segments, scnt = refined_scnt_with_nas_and_telomeres(segments=segments, scnt=scnt, novel_adjacencies=nas, telomeres=telomeres)
+    refined_scnt_file = os.path.expanduser(args.refined_scnt_file)
+    refined_scnt_file = os.path.abspath(refined_scnt_file)
+    fragments_file = os.path.expanduser(args.refined_fragments_file)
+    fragments_file = os.path.abspath(fragments_file)
+    write_segments(file_name=fragments_file, segments=fragments)
+    write_scn_tensor(file_name=refined_scnt_file, scnt=scnt, segments=segments)

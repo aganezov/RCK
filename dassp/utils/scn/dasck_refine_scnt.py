@@ -12,7 +12,7 @@ for _ in range(current_file_level):
 sys.path.append(current_dir)
 
 from dassp.core.io import write_scn_tensor, get_all_clone_ids_from_dasck_scnt_file, read_scn_tensor
-from dassp.core.structures import SegmentCopyNumberProfile, Position, Strand, Segment, Haplotype, refined_segments_and_tensor
+from dassp.core.structures import SegmentCopyNumberProfile, Position, Strand, Segment, Haplotype, refined_scnt
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Refiner of DASCK formatted segment copy number tensor")
@@ -32,7 +32,7 @@ if __name__ == "__main__":
         clone_ids = get_all_clone_ids_from_dasck_scnt_file(file_name=dasck_scnt_file_path)
     segments, scnt = read_scn_tensor(file_name=dasck_scnt_file_path, clone_ids=clone_ids)
     if args.merge_fragments or args.fill_gaps:
-        segments, scnt = refined_segments_and_tensor(segments=segments, tensor=scnt,
-                                                     merge_fragments=args.merge_fragments, max_merge_gap=args.max_merge_gap,
-                                                     fill_gaps=args.fill_gaps, max_fill_gap=args.max_fill_gap)
+        segments, scnt = refined_scnt(segments=segments, tensor=scnt,
+                                      merge_fragments=args.merge_fragments, max_merge_gap=args.max_merge_gap,
+                                      fill_gaps=args.fill_gaps, max_fill_gap=args.max_fill_gap)
     write_scn_tensor(file_name=args.dasck_scn_file_output, scnt=scnt, segments=segments)

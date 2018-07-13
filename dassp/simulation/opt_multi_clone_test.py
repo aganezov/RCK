@@ -11,7 +11,7 @@ import seaborn as sns
 import argparse
 
 from dassp.algo.ilp import OptModelMultiClone
-from dassp.core.structures import cn_distance_clone_specific_scnp, get_max_cn_value_from_clone_specific_scnp, get_nov_adjacency_group
+from dassp.core.structures import cn_distance_inter_scnt, get_max_cn_value_from_clone_specific_scnp, get_nov_adjacency_group
 from dassp.core.graph import construct_hiag_inflate_from_haploid_data
 from dassp.core.structures import get_unique_haploid_telomeres, Phasing, get_novel_adjacencies_from_ref_and_mut_genomes, get_shuffled_clone_specific_scnp, \
     segment_copy_number_tensors_are_compatible
@@ -98,7 +98,7 @@ if __name__ == "__main__":
         if args.CN_noise:
             pass
 
-        cn_distance = cn_distance_clone_specific_scnp(tensor1=mut_clone_specific_scnp, tensor2=shuffled_mut_clone_specific_scnp, segments=hapl_segments)
+        cn_distance = cn_distance_inter_scnt(tensor1=mut_clone_specific_scnp, tensor2=shuffled_mut_clone_specific_scnp, segments=hapl_segments)
 
         if not args.CN_noise:
             assert cn_distance == 0
@@ -176,7 +176,7 @@ if __name__ == "__main__":
             assert group_present
 
         # checking that inferred clone specific segment copy number tensor is compatible with the real diploid segment copy number tensor
-        cn_distance_inferred = cn_distance_clone_specific_scnp(tensor1=mut_clone_specific_scnp, tensor2=inferred_clone_specific_scnp, segments=hapl_segments)
+        cn_distance_inferred = cn_distance_inter_scnt(tensor1=mut_clone_specific_scnp, tensor2=inferred_clone_specific_scnp, segments=hapl_segments)
         assert cn_distance_inferred <= cn_distance
 
         # checking if every non-telomere vertex is balanced and every telomere vertex is unbalanced.

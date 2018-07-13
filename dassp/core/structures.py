@@ -27,6 +27,11 @@ class Strand(Enum):
             raise ValueError("STRAND string has to be either \"+\" or \"-\". \"{v}\" was supplied".format(v=string))
         return cls.REVERSE if string == "-" else cls.FORWARD
 
+    def __lt__(self, other):
+        if not isinstance(other, Strand):
+            return False
+        return self.value < other.value
+
 
 class PositionType(Enum):
     REAL = 0
@@ -262,11 +267,13 @@ class Segment(object):
     STR_REPR_SEPARATOR = ":"
     STR_COORD_SEPARATOR = "-"
 
-    def __init__(self, start_position, end_position, extra=None, idx=None):
+    def __init__(self, start_position, end_position, extra=None, idx=None, allow_unit_length=True):
         if start_position.strand != Strand.REVERSE or end_position.strand != Strand.FORWARD:
             raise ValueError("START position has to come from RC strand, "
                              "while END position has to come from the F strand.")
-        if start_position.coordinate >= end_position.coordinate:
+        if start_position.coordinate == end_position.coordinate and not allow_unit_length:
+            raise ValueError("START position coordinate has to be less than the END position coordinate")
+        if start_position.coordinate > end_position.coordinate:
             raise ValueError("START position coordinate has to be less than the END position coordinate")
         if start_position.chromosome != end_position.chromosome:
             raise ValueError("Segment's START and END position has to come from the same chromosome")
@@ -276,6 +283,7 @@ class Segment(object):
         self.end_position = end_position
         self.extra = extra if extra is not None else {}
         self._idx = idx
+        self.allow_unit_length = allow_unit_length
 
     @property
     def idx(self):
@@ -320,7 +328,7 @@ class Segment(object):
                          ex=repr(self.extra), idx=self._idx)
 
     @classmethod
-    def from_string(cls, string):
+    def from_string(cls, string, allow_unit_length=True):
         data = string.split(cls.STR_REPR_SEPARATOR)
         if len(data) < 2:
             raise ValueError()
@@ -342,7 +350,7 @@ class Segment(object):
         else:
             start_position = Position(chromosome=chromosome, coordinate=start_coord, strand=Strand.REVERSE)
             end_position = Position(chromosome=chromosome, coordinate=end_coord, strand=Strand.FORWARD)
-        segment = cls(start_position=start_position, end_position=end_position, extra=extra)
+        segment = cls(start_position=start_position, end_position=end_position, extra=extra, allow_unit_length=allow_unit_length)
         if segment_is_reversed:
             segment.start_position, segment.end_position = segment.end_position, segment.start_position
         return segment
@@ -404,7 +412,7 @@ class Segment(object):
 
     @property
     def length(self):
-        return int(self.end_position.coordinate - self.start_position.coordinate)
+        return int(self.end_position.coordinate - self.start_position.coordinate + 1)
 
     @property
     def length_1000(self):
@@ -1224,33 +1232,150 @@ def segments_to_fragments_reversed(segments_to_fragments):
     return result
 
 
-def cn_distance_clone_specific_scnp(tensor1, tensor2, segments, segments_to_fragments=None):
-    if set(tensor1.keys()) != set(tensor2.keys()):
+def cn_distance_inter_scnt(tensor1, tensor2, segments, segments_to_fragments=None, check_clone_ids_match=True):
+    if check_clone_ids_match and set(tensor1.keys()) != set(tensor2.keys()):
         raise Exception()
-    clone_ids = sorted(tensor1.keys())
+    assert len(sorted(tensor1.keys())) == len(sorted(tensor2.keys()))
+    clone_ids_source = sorted(tensor1.keys())
+    clone_ids_target = sorted(tensor2.keys())
     sids_to_segments = {segment.stable_id_non_hap: segment for segment in segments}
     segments_to_fragments = check_and_fill_segments_to_fragments(segments=segments, segments_to_fragments=segments_to_fragments)
     fragments_to_segments = segments_to_fragments_reversed(segments_to_fragments=segments_to_fragments)
-    value = 0
+    result = {clone_id: 0 for clone_id in clone_ids_target}
     for fid, sids in fragments_to_segments.items():
+        clone_specific_fid_ab = {clone_id: 0 for clone_id in clone_ids_target}
+        clone_specific_fid_ba = {clone_id: 0 for clone_id in clone_ids_target}
         fid_value_ab = 0
         fid_value_ba = 0
         # computing \gamma = 1, \sigma = 2 (i.e., AB for tensor 2)
-        for cid in clone_ids:
+        for cid_source, cid_target in zip(clone_ids_source, clone_ids_target):
             for sid in sids:
                 segment_length = sids_to_segments[sid].length
-                cn_dif_A = abs(tensor1[cid].get_cn(sid=sid, haplotype=Haplotype.A, default=0) - tensor2[cid].get_cn(sid=sid, haplotype=Haplotype.A, default=0))
-                cn_dif_B = abs(tensor1[cid].get_cn(sid=sid, haplotype=Haplotype.B, default=0) - tensor2[cid].get_cn(sid=sid, haplotype=Haplotype.B, default=0))
-                fid_value_ab += ((cn_dif_A + cn_dif_B) * segment_length)
+                cn_dif_A = abs(tensor1[cid_source].get_cn(sid=sid, haplotype=Haplotype.A, default=0) - tensor2[cid_target].get_cn(sid=sid, haplotype=Haplotype.A, default=0))
+                cn_dif_B = abs(tensor1[cid_source].get_cn(sid=sid, haplotype=Haplotype.B, default=0) - tensor2[cid_target].get_cn(sid=sid, haplotype=Haplotype.B, default=0))
+                value = ((cn_dif_A + cn_dif_B) * segment_length)
+                clone_specific_fid_ab[cid_target] += value
+                fid_value_ab += value
         # computing \gamma = 2, \sigma = 1 (i.e, BA for tensor 2)
-        for cid in clone_ids:
+        for cid_source, cid_target in zip(clone_ids_source, clone_ids_target):
             for sid in sids:
                 segment_length = sids_to_segments[sid].length
-                cn_dif_A = abs(tensor1[cid].get_cn(sid=sid, haplotype=Haplotype.A, default=0) - tensor2[cid].get_cn(sid=sid, haplotype=Haplotype.B, default=0))
-                cn_dif_B = abs(tensor1[cid].get_cn(sid=sid, haplotype=Haplotype.B, default=0) - tensor2[cid].get_cn(sid=sid, haplotype=Haplotype.A, default=0))
-                fid_value_ba += ((cn_dif_A + cn_dif_B) * segment_length)
-        value += min(fid_value_ab, fid_value_ba)
-    return value
+                cn_dif_A = abs(tensor1[cid_source].get_cn(sid=sid, haplotype=Haplotype.A, default=0) - tensor2[cid_target].get_cn(sid=sid, haplotype=Haplotype.B, default=0))
+                cn_dif_B = abs(tensor1[cid_source].get_cn(sid=sid, haplotype=Haplotype.B, default=0) - tensor2[cid_target].get_cn(sid=sid, haplotype=Haplotype.A, default=0))
+                value = ((cn_dif_A + cn_dif_B) * segment_length)
+                clone_specific_fid_ba[cid_target] += value
+                fid_value_ba += value
+        assert fid_value_ab == sum([clone_specific_fid_ab[clone_id] for clone_id in clone_ids_target])
+        assert fid_value_ba == sum([clone_specific_fid_ba[clone_id] for clone_id in clone_ids_target])
+        if fid_value_ab <= fid_value_ba:
+            for clone_id in clone_ids_target:
+                result[clone_id] += clone_specific_fid_ab[clone_id]
+        else:
+            for clone_id in clone_ids_target:
+                result[clone_id] += clone_specific_fid_ba[clone_id]
+    return result
+
+
+def cn_distance_intra_scnt(tensor, segments):
+    clone_ids = sorted(tensor.keys())
+    pairs = list(itertools.combinations(clone_ids, 2))
+    result = defaultdict(int)
+    for pair in pairs:
+        clone1, clone2 = pair
+        clone1_scnp = tensor[clone1]
+        clone2_scnp = tensor[clone2]
+        result[pair] = cn_pairwise_distance(scnp1=clone1_scnp, scnp2=clone2_scnp, segments=segments)
+    return result
+
+
+def cn_pairwise_distance(scnp1, scnp2, segments):
+    result = 0
+    for s in segments:
+        sid = s.stable_id_non_hap
+        clone1_cna = scnp1.get_cn(sid=sid, haplotype=Haplotype.A, default=0)
+        clone1_cnb = scnp1.get_cn(sid=sid, haplotype=Haplotype.B, default=0)
+        clone2_cna = scnp2.get_cn(sid=sid, haplotype=Haplotype.A, default=0)
+        clone2_cnb = scnp2.get_cn(sid=sid, haplotype=Haplotype.B, default=0)
+        dif_a = abs(clone1_cna - clone2_cna)
+        dif_b = abs(clone1_cnb - clone2_cnb)
+        length = s.length
+        result += (dif_a * length)
+        result += (dif_b * length)
+    return result
+
+
+def f_score(precision, recall):
+    if precision == 0 and recall == 0:
+        return 0
+    return 2.0 * (1.0 * precision * recall) / (precision + recall)
+
+
+def precision_inf(cn_set1, cn_set2):
+    return len(cn_set1 & cn_set2) / len(cn_set2)
+
+
+def recall_inf(cn_set1, cn_set2):
+    return len(cn_set1 & cn_set2) / len(cn_set1)
+
+
+def cn_accuracy_scnt(tensor1, tensor2, segments):
+    clone_ids_source = sorted(tensor1.keys())
+    clone_ids_target = sorted(tensor2.keys())
+    sids_to_segments = {segment.stable_id_non_hap: segment for segment in segments}
+    # segments_to_fragments = check_and_fill_segments_to_fragments(segments=segments, segments_to_fragments=segments_to_fragments)
+    # fragments_to_segments = segments_to_fragments_reversed(segments_to_fragments=segments_to_fragments)
+    sids = [s.stable_id_non_hap for s in segments]
+    precision = 0
+    recall = 0
+    total_length = 0
+    for sid in sids:
+        segment = sids_to_segments[sid]
+        total_length += segment.length
+        source_cns = set()
+        for cid in clone_ids_source:
+            cna = tensor1[cid].get_cn(sid=sid, haplotype=Haplotype.A, default=0)
+            cnb = tensor1[cid].get_cn(sid=sid, haplotype=Haplotype.B, default=0)
+            source_cns.add((cna, cnb))
+        target_ab_cns = set()
+        target_ba_cns = set()
+        for cid in clone_ids_target:
+            cna = tensor2[cid].get_cn(sid=sid, haplotype=Haplotype.A, default=0)
+            cnb = tensor2[cid].get_cn(sid=sid, haplotype=Haplotype.B, default=0)
+            target_ab_cns.add((cna, cnb))
+            target_ba_cns.add((cnb, cna))
+        ab_precision = precision_inf(cn_set1=source_cns, cn_set2=target_ab_cns)
+        ab_recall = recall_inf(cn_set1=source_cns, cn_set2=target_ab_cns)
+        ab_f_score = f_score(precision=ab_precision, recall=ab_recall)
+        ba_precision = precision_inf(cn_set1=source_cns, cn_set2=target_ba_cns)
+        ba_recall = recall_inf(cn_set1=source_cns, cn_set2=target_ba_cns)
+        ba_f_score = f_score(precision=ba_precision, recall=ba_recall)
+        if ab_f_score > ba_f_score:
+            precision += ab_precision * segment.length
+            recall += ab_recall * segment.length
+        else:
+            precision += ba_precision * segment.length
+            recall += ba_recall * segment.length
+    return precision / total_length, recall / total_length
+
+
+def scnt_length(tensor, segments):
+    clone_ids = sorted(tensor.keys())
+    result = {clone_id: 0 for clone_id in clone_ids}
+    for clone_id in clone_ids:
+        for segment in segments:
+            sid = segment.stable_id_non_hap
+            total_cn = 0
+            total_cn += tensor[clone_id].get_cn(sid=sid, haplotype=Haplotype.A, default=0)
+            total_cn += tensor[clone_id].get_cn(sid=sid, haplotype=Haplotype.B, default=0)
+            result[clone_id] += (total_cn * segment.length)
+    return result
+
+
+def scnts_lengths(scnts_by_name, segments):
+    result = {}
+    for name, scnt in scnts_by_name.items():
+        result[name] = scnt_length(tensor=scnt, segments=segments)
+    return result
 
 
 def get_max_cn_value_from_scnp(segment_copy_number_profile, segments):
@@ -1440,7 +1565,7 @@ def partition_fragments_into_segments_by_na_clusters(hapl_fragments, na_clusters
     return segments_by_chr, fragments_to_segments
 
 
-def refined_segments_and_tensor(segments, tensor, merge_fragments, max_merge_gap, fill_gaps, max_fill_gap):
+def refined_scnt(segments, tensor, merge_fragments, max_merge_gap, fill_gaps, max_fill_gap):
     clone_ids = sorted(tensor.keys())
     new_fragments_by_chr = defaultdict(list)
     fragments_by_chr = defaultdict(list)
@@ -1473,9 +1598,10 @@ def refined_segments_and_tensor(segments, tensor, merge_fragments, max_merge_gap
                 if fill_gaps and (2 <= distance <= max_fill_gap):
                     mid_coordinate = current_new_fragment.end_position.coordinate + int(distance / 2)
                     current_new_fragment.end_position.coordinate = mid_coordinate
-                    current_new_f_id = current_new_fragment.stable_id_non_hap
+                    # current_new_f_id = current_new_fragment.stable_id_non_hap
                     fragment.start_position.coordinate = mid_coordinate + 1
                 new_fragments_by_chr[chr_name].append(current_new_fragment)
+                current_new_f_id = current_new_fragment.stable_id_non_hap
                 for clone_id in clone_ids:
                     new_tensor[clone_id].set_cn_record(sid=current_new_f_id, hap=Haplotype.A, cn=current_f_cnas[clone_id])
                     new_tensor[clone_id].set_cn_record(sid=current_new_f_id, hap=Haplotype.B, cn=current_f_cnbs[clone_id])
@@ -1484,6 +1610,7 @@ def refined_segments_and_tensor(segments, tensor, merge_fragments, max_merge_gap
                 current_f_cnas = f_cnas
                 current_f_cnbs = f_cnbs
         new_fragments_by_chr[chr_name].append(current_new_fragment)
+        current_new_f_id = current_new_fragment.stable_id_non_hap
         for clone_id in clone_ids:
             new_tensor[clone_id].set_cn_record(sid=current_new_f_id, hap=Haplotype.A, cn=current_f_cnas[clone_id])
             new_tensor[clone_id].set_cn_record(sid=current_new_f_id, hap=Haplotype.B, cn=current_f_cnbs[clone_id])
@@ -1568,9 +1695,7 @@ def cns_match(cns1, cns2, clone_ids):
     return True
 
 
-def refine_segments_and_nas_telomeres(segments, scnt, novel_adjacencies, telomeres=None,
-                                      move_fragments_boundaries=False, fragments_boundaries_move_max_distance=1000,
-                                      inplace=False):
+def refined_scnt_with_nas_and_telomeres(segments, scnt, novel_adjacencies=None, telomeres=None, allow_unit_segments=True):
     fragments = deepcopy(segments)
     if telomeres is None:
         telomeres = []
@@ -1581,13 +1706,17 @@ def refine_segments_and_nas_telomeres(segments, scnt, novel_adjacencies, telomer
     for fragment in fragments:
         fragments_by_chr[fragment.start_position.chromosome].append(fragment)
     positions_by_chr = defaultdict(list)
+    if novel_adjacencies is None:
+        novel_adjacencies = []
     for na in novel_adjacencies:
         p1 = na.position1
         p2 = na.position2
         positions_by_chr[p1.chromosome].append(p1)
         positions_by_chr[p2.chromosome].append(p2)
     for tel_position in telomeres:
-        positions_by_chr[tel_position.chromsoome].append(tel_position)
+        positions_by_chr[tel_position.chromosome].append(tel_position)
+    if len(list(positions_by_chr.keys())) == 0:
+        return deepcopy(segments), deepcopy(scnt)
     if not positions_within_segments(segments_by_chr=fragments_by_chr, positions_by_chr=positions_by_chr):
         raise Exception()
     for chr_name in sorted(fragments_by_chr.keys()):
@@ -1597,7 +1726,10 @@ def refine_segments_and_nas_telomeres(segments, scnt, novel_adjacencies, telomer
     for chr_name in sorted(fragments_by_chr.keys()):
         processed_positions_ids = set()
         chr_fragments = iter(fragments_by_chr[chr_name])
-        chr_nas_positions = iter(sorted(positions_by_chr[chr_name], key=lambda p: p.coordinate))
+        if chr_name in positions_by_chr:
+            chr_nas_positions = iter(sorted(positions_by_chr[chr_name], key=lambda p: (p.coordinate, p.strand)))
+        else:
+            chr_nas_positions = iter([])
         current_fragment = next(chr_fragments, None)
         current_position = next(chr_nas_positions, None)
         current_segment = deepcopy(current_fragment)
@@ -1608,6 +1740,9 @@ def refine_segments_and_nas_telomeres(segments, scnt, novel_adjacencies, telomer
             elif current_position.coordinate < current_fragment.start_position.coordinate:
                 raise Exception()
             elif current_position.coordinate == current_segment.start_position.coordinate and current_position.strand == Strand.REVERSE:
+                processed_positions_ids.add(current_position.stable_id_non_hap)
+                current_position = next(chr_nas_positions, None)
+            elif current_position.coordinate == current_segment.end_position.coordinate and current_position.strand == Strand.FORWARD:
                 processed_positions_ids.add(current_position.stable_id_non_hap)
                 current_position = next(chr_nas_positions, None)
             elif current_position.coordinate <= current_fragment.end_position.coordinate:
@@ -1638,7 +1773,7 @@ def refine_segments_and_nas_telomeres(segments, scnt, novel_adjacencies, telomer
             set_cnr(parent_fragment=current_fragment, fcnt=scnt, child_segment=current_segment, scnt=refined_scnt)
             current_fragment = next(chr_fragments, None)
             current_segment = deepcopy(current_fragment)
-    return fragments, refined_segments, refined_scnt
+    return refined_segments, refined_scnt
 
 
 def positions_within_segments(segments_by_chr, positions_by_chr):
@@ -1674,6 +1809,135 @@ def set_cnr(parent_fragment, fcnt, child_segment, scnt):
         pcnb = fcnt[clone_id].get_cn(sid=parent_fragment.stable_id_non_hap, haplotype=Haplotype.B, default=0)
         scnt[clone_id].set_cn_record(sid=child_segment.stable_id_non_hap, hap=Haplotype.A, cn=pcna)
         scnt[clone_id].set_cn_record(sid=child_segment.stable_id_non_hap, hap=Haplotype.B, cn=pcnb)
+
+
+def align_scnts(segments_by_sample_names, scnts_by_sample_names, fill_gaps=True, max_fill_gap=1000000000):
+    sample_names = sorted(segments_by_sample_names.keys())
+    for sample_name in sample_names:
+        if sample_name not in scnts_by_sample_names:
+            raise Exception()
+    result_segments_by_sample_names = {sample_name: [] for sample_name in sample_names}
+    result_scnts_by_sample_names = {sample_name: deepcopy(scnts_by_sample_names[sample_name]) for sample_name in sample_names}
+    if fill_gaps:
+        for sample_name in sample_names:
+            segments = segments_by_sample_names[sample_name]
+            scnt = result_scnts_by_sample_names[sample_name]
+            print(sample_name)
+            b_lengths = scnt_length(tensor=scnt, segments=segments)
+            clone_ids_inferred = sorted(b_lengths.keys())
+            print("\tBefore. Total = {t_length:,};".format(t_length=sum(b_lengths.values())), end=" ")
+            for clone_id in clone_ids_inferred:
+                print("{cid} = {length:,};".format(cid=clone_id, length=b_lengths[clone_id]), end=" ")
+            print()
+            # print("\tBefore. Total = {t_length:,}; 1 = {length1:,}; 2 = {length2:,}".format(t_length=sum(b_lengths.values()), length1=b_lengths[clone_ids_inferred[0]],
+            #                                                                                 length2=b_lengths[clone_ids_inferred[1]]))
+            ref_segments, ref_scnt = refined_scnt(segments=segments, tensor=scnt, merge_fragments=False,  max_merge_gap=1000000000, fill_gaps=True, max_fill_gap=max_fill_gap)
+            result_segments_by_sample_names[sample_name] = ref_segments
+            result_scnts_by_sample_names[sample_name] = ref_scnt
+            a_lengths = scnt_length(tensor=ref_scnt, segments=ref_segments)
+            print("\tAfter. Total = {t_length:,};".format(t_length=sum(a_lengths.values())), end=" ")
+            for clone_id in clone_ids_inferred:
+                print("{cid} = {length:,};".format(cid=clone_id, length=a_lengths[clone_id]), end=" ")
+            print()
+            # print("\tAfter. Total = {t_length:,}; 1 = {length1:,}; 2 = {length2:,}".format(t_length=sum(a_lengths.values()), length1=a_lengths[clone_ids_inferred[0]],
+            #                                                                                length2=a_lengths[clone_ids_inferred[1]]))
+    telomeres_by_sample_names_by_chr = defaultdict(dict)
+    segments_by_sample_names_by_chr = defaultdict(lambda: defaultdict(list))
+    all_chromosomes = set()
+    outer_most_telomeres_by_chr = {}
+    for sample_name in sample_names:
+        segments = result_segments_by_sample_names[sample_name]
+        for segment in segments:
+            all_chromosomes.add(segment.chromosome)
+            segments_by_sample_names_by_chr[sample_name][segment.chromosome].append(segment)
+    all_chromosomes = sorted(all_chromosomes)
+    for sample_name in sample_names:
+        for chr_name in all_chromosomes:
+            if chr_name not in segments_by_sample_names_by_chr[sample_name]:
+                continue
+            segments = segments_by_sample_names_by_chr[sample_name][chr_name]
+            segments = sorted(segments, key=lambda s: (s.start_position.coordinate, s.end_position.coordinate))
+            if not sorted_segments_donot_overlap(segments=segments):
+                raise Exception()
+            segments_by_sample_names_by_chr[sample_name][chr_name] = segments
+            lt = segments[0].start_position
+            rt = segments[-1].end_position
+            telomeres_by_sample_names_by_chr[sample_name][chr_name] = (lt, rt)
+    for chr_name in all_chromosomes:
+        left_telomeres = []
+        right_telomeres = []
+        for sample_name in sample_names:
+            if chr_name not in telomeres_by_sample_names_by_chr[sample_name]:
+                continue
+            lt, rt = telomeres_by_sample_names_by_chr[sample_name][chr_name]
+            left_telomeres.append(lt)
+            right_telomeres.append(rt)
+        outer_most_lt = min(left_telomeres, key=lambda p: p.coordinate)
+        outer_most_rt = max(right_telomeres, key=lambda p: p.coordinate)
+        outer_most_telomeres_by_chr[chr_name] = (outer_most_lt, outer_most_rt)
+    for sample_name in sample_names:
+        for chr_name in all_chromosomes:
+            if chr_name not in segments_by_sample_names_by_chr[sample_name]:
+                continue
+            segments = segments_by_sample_names_by_chr[sample_name][chr_name]
+            ls = segments[0]
+            rs = segments[-1]
+            lt, rt = outer_most_telomeres_by_chr[chr_name]
+            old_ls = deepcopy(ls)
+            old_rs = deepcopy(rs)
+            old_ls_id = old_ls.stable_id_non_hap
+            old_rs_id = old_rs.stable_id_non_hap
+            ls.start_position = lt
+            rs.end_position = rt
+            new_ls_id = ls.stable_id_non_hap
+            new_rs_id = rs.stable_id_non_hap
+            scnt = result_scnts_by_sample_names[sample_name]
+            for clone_id in sorted(scnt.keys()):
+                ls_cna = scnt[clone_id].get_cn(sid=old_ls_id, haplotype=Haplotype.A, default=0)
+                ls_cnb = scnt[clone_id].get_cn(sid=old_ls_id, haplotype=Haplotype.B, default=0)
+                scnt[clone_id].set_cn_record(sid=new_ls_id, hap=Haplotype.A, cn=ls_cna)
+                scnt[clone_id].set_cn_record(sid=new_ls_id, hap=Haplotype.B, cn=ls_cnb)
+                rs_cna = scnt[clone_id].get_cn(sid=old_rs_id, haplotype=Haplotype.A, default=0)
+                rs_cnb = scnt[clone_id].get_cn(sid=old_rs_id, haplotype=Haplotype.B, default=0)
+                scnt[clone_id].set_cn_record(sid=new_rs_id, hap=Haplotype.A, cn=rs_cna)
+                scnt[clone_id].set_cn_record(sid=new_rs_id, hap=Haplotype.B, cn=rs_cnb)
+                if old_ls_id != new_ls_id and old_ls_id in scnt[clone_id].records:
+                    del scnt[clone_id].records[old_ls_id]
+                if old_rs_id != new_rs_id and old_rs_id in scnt[clone_id].records:
+                    del scnt[clone_id].records[old_rs_id]
+    all_positions = {}
+    for sample_name in sample_names:
+        for chr_name in all_chromosomes:
+            if chr_name not in segments_by_sample_names_by_chr[sample_name]:
+                continue
+            segments = segments_by_sample_names_by_chr[sample_name][chr_name]
+            for segment in segments:
+                sp_id = segment.start_position.stable_id_non_hap
+                ep_id = segment.end_position.stable_id_non_hap
+                if sp_id not in all_positions:
+                    all_positions[sp_id] = deepcopy(segment.start_position)
+                if ep_id not in all_positions:
+                    all_positions[ep_id] = deepcopy(segment.end_position)
+    all_positions_list = list(all_positions.values())
+    for sample_name in sample_names:
+        scnt = result_scnts_by_sample_names[sample_name]
+        segments = result_segments_by_sample_names[sample_name]
+        print(sample_name)
+        b_lengths = scnt_length(tensor=scnt, segments=segments)
+        clone_ids_inferred = sorted(b_lengths.keys())
+        print("\tBefore. Total = {t_length:,};".format(t_length=sum(b_lengths.values())), end=" ")
+        for clone_id in clone_ids_inferred:
+            print("{cid} = {length:,};".format(cid=clone_id, length=b_lengths[clone_id]), end=" ")
+        print()
+        ref_segments, ref_scnt = refined_scnt_with_nas_and_telomeres(segments=segments, scnt=scnt, novel_adjacencies=[], telomeres=all_positions_list)
+        result_segments_by_sample_names[sample_name] = ref_segments
+        result_scnts_by_sample_names[sample_name] = ref_scnt
+        a_lengths = scnt_length(tensor=ref_scnt, segments=ref_segments)
+        print("\tAfter. Total = {t_length:,};".format(t_length=sum(a_lengths.values())), end=" ")
+        for clone_id in clone_ids_inferred:
+            print("{cid} = {length:,};".format(cid=clone_id, length=a_lengths[clone_id]), end=" ")
+        print()
+    return result_segments_by_sample_names, result_scnts_by_sample_names
 
 
 class SCNBoundariesStrategies(Enum):
@@ -2077,3 +2341,30 @@ HUMAN_CENTROMERES = [
     Position(chromosome="chrX", coordinate=60600001, strand=Strand.REVERSE),
 
 ]
+
+
+def get_aabb_for_ra(haplotype):
+    if haplotype == Haplotype.A:
+        return Phasing.AA
+    elif haplotype == Haplotype.B:
+        return Phasing.BB
+    else:
+        raise Exception()
+
+
+def get_abba_for_na_and_position(novel_adjacency, position, haplotype):
+    left = novel_adjacency.position1.stable_id_non_hap if novel_adjacency.is_sorted_non_phased else novel_adjacency.position2.stable_id_non_hap
+    if position.stable_id_non_hap == left:
+        if haplotype == Haplotype.A:
+            return Phasing.AB
+        elif haplotype == Haplotype.B:
+            return Phasing.BA
+        else:
+            raise Exception()
+    else:
+        if haplotype == Haplotype.A:
+            return Phasing.BA
+        elif haplotype == Haplotype.B:
+            return Phasing.AB
+        else:
+            raise Exception()

@@ -1,7 +1,6 @@
 import argparse
 import csv
 
-import sys
 import os
 
 import sys
@@ -13,7 +12,7 @@ for _ in range(current_file_level):
 sys.path.append(current_dir)
 
 from dassp.core.io import write_scn_tensor
-from dassp.core.structures import SegmentCopyNumberProfile, Position, Strand, Segment, Haplotype, refined_segments_and_tensor
+from dassp.core.structures import SegmentCopyNumberProfile, Position, Strand, Segment, Haplotype, refined_scnt
 
 CLONE1_CN_A = "nMaj1_A"
 CLONE1_CN_B = "nMin1_A"
@@ -67,9 +66,9 @@ if __name__ == "__main__":
     parser.add_argument('battenberg_scn_file')
     parser.add_argument('--sample', type=str, required=True)
     parser.add_argument("--no-merge-fragments", action="store_false", dest="merge_fragments")
-    parser.add_argument("--max-merge-gap", type=int, default=1000000)
+    parser.add_argument("--max-merge-gap", type=int, default=10000000)
     parser.add_argument("--no-fill-gaps", action="store_false", dest="fill_gaps")
-    parser.add_argument("--max-fill-gap", type=int, default=1000000)
+    parser.add_argument("--max-fill-gap", type=int, default=10000000)
     parser.add_argument('dasck_scn_file')
     args = parser.parse_args()
     clone1_id = '1'
@@ -80,7 +79,7 @@ if __name__ == "__main__":
     battenberg_scn_file_path = os.path.expanduser(args.battenberg_scn_file)
     battenberg_scn_file_path = os.path.abspath(battenberg_scn_file_path)
     with open(battenberg_scn_file_path, "rt") as source:
-        reader = csv.DictReader(source)
+        reader = csv.DictReader(source, delimiter='\t')
         for row in reader:
             if row[SAMPLE_NAME] != sample_name:
                 continue
@@ -103,7 +102,7 @@ if __name__ == "__main__":
             clone2_scnp.set_cn_record(sid=fid, hap=Haplotype.B, cn=cn2b)
             segments.append(fragment)
     if args.merge_fragments or args.fill_gaps:
-        segments, scnt = refined_segments_and_tensor(segments=segments, tensor=scnt,
-                                                     merge_fragments=args.merge_fragments, max_merge_gap=args.max_merge_gap,
-                                                     fill_gaps=args.fill_gaps, max_fill_gap=args.max_fill_gap)
+        segments, scnt = refined_scnt(segments=segments, tensor=scnt,
+                                      merge_fragments=args.merge_fragments, max_merge_gap=args.max_merge_gap,
+                                      fill_gaps=args.fill_gaps, max_fill_gap=args.max_fill_gap)
     write_scn_tensor(file_name=args.dasck_scn_file, scnt=scnt, segments=segments)

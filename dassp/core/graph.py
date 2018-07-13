@@ -141,6 +141,22 @@ class IntervalAdjacencyGraph(object):
         except ValueError:
             return False
 
+    def has_adjacency_edge_by_edge(self, edge, sort=True):
+        u, v, = edge
+        if sort:
+            u, v = tuple(sorted([u, v]))
+        if u not in self.graph or v not in self.graph:
+            return False
+        try:
+            exists = False
+            for u_, u__, u_a_edge_data in self.adjacency_edges(nbunch=u, data=True, sort=True):
+                for v_, v__, v_a_edge_data in self.adjacency_edges(nbunch=v, data=True, sort=True):
+                    if u_a_edge_data["object"] == v_a_edge_data["object"]:
+                        exists = True
+            return exists
+        except ValueError:
+            return False
+
     @property
     def complies_with_is(self):
         for node in self.nodes(data=False):
@@ -319,6 +335,92 @@ class IntervalAdjacencyGraph(object):
             if scn_profile.get_combined_cn(sid=non_observed_sid, default=0) != 0:
                 return False
         return True
+
+    def remove_segment_edge(self, u, v):
+        if not self.has_segment_edge_by_edge(edge=(u, v), sort=True):
+            raise ValueError()
+        edges_to_remove = []
+        for u, v, key, data in self.graph.edges(nbunch=u, data=True, keys=True):
+            obj = data["object"]
+            if isinstance(obj, Segment):
+                edges_to_remove.append((u, v, key))
+        for u, v, key in edges_to_remove:
+            self.graph.remove_edge(u=u, v=v, key=key)
+
+    def remove_adjacency_edge(self, u, v):
+        if not self.has_adjacency_edge_by_edge(edge=(u, v), sort=True):
+            raise ValueError()
+        edges_to_remove = []
+        for u_, u__, u_key, u_data in self.graph.edges(nbunch=u, data=True, keys=True):
+            if not isinstance(u_data["object"], Adjacency):
+                continue
+            for v_, v__, v_key, v_data in self.graph.edges(nbunch=v, data=True, keys=True):
+                if not isinstance(v_data["object"], Adjacency):
+                    continue
+                if u_data["object"] == v_data["object"]:
+                    assert v_key == u_key
+                    edges_to_remove.append((u, v, v_key))
+        for u, v, key in edges_to_remove:
+            self.graph.remove_edge(u=u, v=v, key=key)
+
+    def remove_edges_with_zero_cn(self, check_cn_awareness=False, clear_nodes_after=True):
+        self.remove_segment_edges_with_zero_cn(check_cn_awareness=check_cn_awareness, clear_nodes_after=clear_nodes_after)
+        self.remove_adjacency_edges_with_zero_cn(check_cn_awareness=check_cn_awareness, clear_nodes_after=clear_nodes_after)
+
+    def remove_segment_edges_with_zero_cn(self, check_cn_awareness=False, clear_nodes_after=True):
+        if check_cn_awareness and not self.is_copy_number_aware:
+            raise ValueError()
+        segment_edges_to_remove = []
+        for u, v, data in self.segment_edges(data=True, sort=True):
+            cn = data[COPY_NUMBER]
+            if cn == 0:
+                segment_edges_to_remove.append((u, v))
+                # self.remove_segment_edge(u=u, v=v)
+        for u, v in segment_edges_to_remove:
+            self.remove_segment_edge(u=u, v=v)
+        if clear_nodes_after:
+            if self.graph.degree(u) == 0:
+                self.graph.remove_node(n=u)
+            if self.graph.degree(v) == 0:
+                self.graph.remove_node(n=v)
+
+    def remove_adjacency_edges_with_zero_cn(self, check_cn_awareness=False, clear_nodes_after=True):
+        self.remove_ref_adjacency_edges_with_zero_cn(check_cn_awareness=check_cn_awareness, clear_nodes_after=clear_nodes_after)
+        self.remove_nov_adjacency_edges_with_zero_cn(check_cn_awareness=check_cn_awareness, clear_nodes_after=clear_nodes_after)
+
+    def remove_ref_adjacency_edges_with_zero_cn(self, check_cn_awareness=False, clear_nodes_after=True):
+        if check_cn_awareness and not self.is_copy_number_aware:
+            raise ValueError()
+        adjacency_edges_to_remove = []
+        for u, v, data in self.ref_adjacency_edges(data=True, sort=True):
+            cn = data[COPY_NUMBER]
+            if cn == 0:
+                adjacency_edges_to_remove.append((u, v))
+                # self.remove_adjacency_edge(u=u, v=v)
+        for u, v in adjacency_edges_to_remove:
+            self.remove_adjacency_edge(u=u, v=v)
+        if clear_nodes_after:
+            if self.graph.degree(u) == 0:
+                self.graph.remove_node(n=u)
+            if self.graph.degree(v) == 0:
+                self.graph.remove_node(n=v)
+
+    def remove_nov_adjacency_edges_with_zero_cn(self, check_cn_awareness=False, clear_nodes_after=True):
+        if check_cn_awareness and not self.is_copy_number_aware:
+            raise ValueError()
+        adjacency_edges_to_remove = []
+        for u, v, data in self.nov_adjacency_edges(data=True, sort=True):
+            cn = data[COPY_NUMBER]
+            if cn == 0:
+                adjacency_edges_to_remove.append((u, v))
+                # self.remove_adjacency_edge(u=u, v=v)
+        for u, v, in adjacency_edges_to_remove:
+            self.remove_adjacency_edge(u=u, v=v)
+        if clear_nodes_after:
+            if self.graph.degree(u) == 0:
+                self.graph.remove_node(n=u)
+            if self.graph.degree(v) == 0:
+                self.graph.remove_node(n=v)
 
     def matches_adjacency_copy_number_profile(self, acn_profile):
         aid_keys_set_from_profile = set(acn_profile.aid_keys())

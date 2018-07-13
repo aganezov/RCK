@@ -32,6 +32,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-allow-positive-for-zero", type=int, default=1000000000)
     parser.add_argument("--clone-ids", default="")
     parser.add_argument("--is-male", action="store_false", dest="is_female")
+    parser.add_argument("--no-allow-unit-segments", dest="allow_unit_segments", action="store_false")
     parser.add_argument("scn_boundaries_file")
     args = parser.parse_args()
     clone_ids = args.clone_ids.split(",") if len(args.clone_ids) > 0 else []
@@ -40,8 +41,8 @@ if __name__ == "__main__":
     strategy = SCNBoundariesStrategies.from_str_value(string_value=args.boundaries_strategy)
     length_spread_relation = LengthSpreadRelationships.DUMMY
     if len(clone_ids) == 0:
-        clone_ids = get_all_clone_ids_from_dasck_scnt_file(file_name=dasck_input_scnt_filepath)
-    segments, scnt = read_scn_tensor(file_name=dasck_input_scnt_filepath, clone_ids=clone_ids)
+        clone_ids = get_all_clone_ids_from_dasck_scnt_file(file_name=dasck_input_scnt_filepath, allow_unit_segments=args.allow_unit_segments)
+    segments, scnt = read_scn_tensor(file_name=dasck_input_scnt_filepath, clone_ids=clone_ids, allow_unit_segments=args.allow_unit_segments)
     boundaries = get_scn_boundaries(segments=segments, scnt=scnt, strategy=strategy,
                                     min_allow_zero_for_positive=args.min_allow_zero_for_positive,
                                     max_allow_zero_for_positive=args.max_allow_zero_for_positive,

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import vcf
 
+from dassp.core.structures import AdjacencyCopyNumberProfile
 from dassp.core.structures import SegmentCopyNumberRecord, SegmentCopyNumberProfile, Haplotype, AdjacencyType, Phasing
 from dassp.core.structures import Position, Strand, Adjacency, Segment
 
@@ -116,7 +117,7 @@ def parse_cn_entry(cn_string, cn_separator=";"):
     return result
 
 
-def parse_scn_record(scn_string, separator="\t", cn_separator=";"):
+def parse_scn_record(scn_string, separator="\t", cn_separator=";", allow_unit_segments=False):
     data = scn_string.split(separator)
     chr_name = data[0]
     start_coordinate = int(data[1])
@@ -124,12 +125,12 @@ def parse_scn_record(scn_string, separator="\t", cn_separator=";"):
     cn_entry = data[3]
     start_position = Position(chromosome=chr_name, coordinate=start_coordinate, strand=Strand.REVERSE)
     end_position = Position(chromosome=chr_name, coordinate=end_coordinate, strand=Strand.FORWARD)
-    segment = Segment(start_position=start_position, end_position=end_position)
+    segment = Segment(start_position=start_position, end_position=end_position, allow_unit_length=allow_unit_segments)
     cns = parse_cn_entry(cn_string=cn_entry, cn_separator=cn_separator)
     return segment, cns
 
 
-def read_scn_tensor(file_name, clone_ids, separator="\t", cn_separator=";", allow_absent_clones=False):
+def read_scn_tensor(file_name, clone_ids, separator="\t", cn_separator=";", allow_absent_clones=False, allow_unit_segments=False):
     segments = []
     result = {}
     for clone_id in clone_ids:
@@ -139,7 +140,7 @@ def read_scn_tensor(file_name, clone_ids, separator="\t", cn_separator=";", allo
             line = line.strip()
             if len(line) == 0 or line.startswith("#") or line_cnt == 0:
                 continue
-            segment, cns = parse_scn_record(scn_string=line, separator=separator, cn_separator=cn_separator)
+            segment, cns = parse_scn_record(scn_string=line, separator=separator, cn_separator=cn_separator, allow_unit_segments=allow_unit_segments)
             for clone_id in clone_ids:
                 if not allow_absent_clones and clone_id not in cns:
                     raise Exception()
@@ -267,15 +268,63 @@ def write_acnt(file_name, acnt, adjacencies, separator="\t", cn_separator=";", o
             print(na_string, file=destination)
 
 
+def parse_acn_string(string_entry, separator="\t", cn_separator=";"):
+    cns = {}
+    data = string_entry.split(separator)
+    naid = data[0]
+    chr1 = data[1]
+    coord1 = int(data[2])
+    strand1 = Strand.from_pm_string(string=data[3])
+    chr2 = data[4]
+    coord2 = int(data[5])
+    strand2 = Strand.from_pm_string(string=data[6])
+    cns_string_entry = data[7]
+    p1 = Position(chromosome=chr1, coordinate=coord1, strand=strand1)
+    p2 = Position(chromosome=chr2, coordinate=coord2, strand=strand2)
+    adj_type = AdjacencyType.REFERENCE if "r" in naid else AdjacencyType.NOVEL
+    adjacency = Adjacency(position1=p1, position2=p2, adjacency_type=adj_type, extra={EXTERNAL_NA_ID: naid})
+    cn_data = cns_string_entry.split(cn_separator)
+    for entry in cn_data:
+        entry = entry[1:-1]
+        clone_id, cnAA, cnAB, cnBA, cnBB = entry.split(",")
+        cnAA, cnAB, cnBA, cnBB = int(cnAA), int(cnAB), int(cnBA), int(cnBB)
+        cns[clone_id] = {Phasing.AA: cnAA, Phasing.AB: cnAB, Phasing.BA: cnBA, Phasing.BB: cnBB}
+    return adjacency, cns
 
-def get_all_clone_ids_from_dasck_scnt_file(file_name, separator="\t", cn_separator=";"):
+
+def read_acnt(file_name, clone_ids, separator="\t", cn_separator=";"):
+    clone_ids = sorted(clone_ids)
+    result = {clone_id: AdjacencyCopyNumberProfile() for clone_id in clone_ids}
+    adjacencies = []
+    with open(file_name, "rt") as source:
+        for line_cnt, line in enumerate(source):
+            line = line.strip()
+            if line_cnt == 0 or len(line) == 0 or line.startswith("#"):
+                continue
+            adjacency, cns = parse_acn_string(string_entry=line, separator=separator, cn_separator=cn_separator)
+            if EXTERNAL_NA_ID in adjacency.extra and adjacency.extra[EXTERNAL_NA_ID].startswith("r"):
+                adjacency.adjacency_type = AdjacencyType.REFERENCE
+            else:
+                adjacency.adjacency_type = AdjacencyType.NOVEL
+            aid = adjacency.stable_id_non_phased
+            adjacencies.append(adjacency)
+            for clone_id in clone_ids:
+                if clone_id not in cns:
+                    raise Exception()
+                for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]:
+                    acnp = result[clone_id]
+                    acnp._set_cn_record(aid=aid, phasing=ph, cn=cns[clone_id][ph])
+    return adjacencies, result
+
+
+def get_all_clone_ids_from_dasck_scnt_file(file_name, separator="\t", cn_separator=";", allow_unit_segments=False):
     clone_ids = set()
     with open(file_name, "rt") as source:
         for line_cnt, line in enumerate(source):
             line = line.strip()
             if len(line) == 0 or line.startswith("#") or line_cnt == 0:
                 continue
-            segment, cns = parse_scn_record(scn_string=line, separator=separator, cn_separator=cn_separator)
+            segment, cns = parse_scn_record(scn_string=line, separator=separator, cn_separator=cn_separator, allow_unit_segments=allow_unit_segments)
             for clone_id in cns.keys():
                 clone_ids.add(clone_id)
     return sorted(clone_ids)
@@ -317,24 +366,24 @@ def write_segments(file_name, segments, separator="\t"):
             print(string_entry, file=destination)
 
 
-def parse_segment_string_entry(string_entry, separator="\t"):
+def parse_segment_string_entry(string_entry, separator="\t", allow_unit_segments=False):
     data = string_entry.split(separator)
     chr_name = data[0]
     start_corodinate = int(data[1])
     end_coordinate = int(data[2])
     sp = Position(chromosome=chr_name, coordinate=start_corodinate, strand=Strand.REVERSE)
     ep = Position(chromosome=chr_name, coordinate=end_coordinate, strand=Strand.FORWARD)
-    return Segment(start_position=sp, end_position=ep)
+    return Segment(start_position=sp, end_position=ep, allow_unit_length=allow_unit_segments)
 
 
-def read_segments(file_name, separator="\t"):
+def read_segments(file_name, separator="\t", allow_unit_segments=False):
     result = []
     with open(file_name, "rt") as source:
         for line_cnt, line in enumerate(source):
             line = line.strip()
             if line_cnt == 0 or len(line) == 0 or line.startswith("#"):
                 continue
-            segment = parse_segment_string_entry(string_entry=line, separator=separator)
+            segment = parse_segment_string_entry(string_entry=line, separator=separator, allow_unit_segments=allow_unit_segments)
             result.append(segment)
     return result
 
@@ -386,7 +435,7 @@ def parse_cn_boundaries_string(string_entry, cn_separator=";"):
     return result
 
 
-def parse_scn_boundaries_string_entry(string_entry, separator="\t", cn_separator=";"):
+def parse_scn_boundaries_string_entry(string_entry, separator="\t", cn_separator=";", allow_unit_segments=False):
     data = string_entry.split(separator)
     chr_name = data[0]
     start_coordinate = int(data[1])
@@ -394,19 +443,19 @@ def parse_scn_boundaries_string_entry(string_entry, separator="\t", cn_separator
     cn_boundaries_string = data[3]
     sp = Position(chromosome=chr_name, coordinate=start_coordinate, strand=Strand.REVERSE)
     ep = Position(chromosome=chr_name, coordinate=end_coordinate, strand=Strand.FORWARD)
-    segment = Segment(start_position=sp, end_position=ep)
+    segment = Segment(start_position=sp, end_position=ep, allow_unit_length=allow_unit_segments)
     boundaries = parse_cn_boundaries_string(string_entry=cn_boundaries_string, cn_separator=cn_separator)
     return segment, boundaries
 
 
-def read_scn_boundaries(file_name, segments, clone_ids, separator="\t", cn_separator=";"):
+def read_scn_boundaries(file_name, segments, clone_ids, separator="\t", cn_separator=";", allow_unit_segments=False):
     result = {clone_id: {s.stable_id_non_hap: {Haplotype.A: None, Haplotype.B: None} for s in segments} for clone_id in clone_ids}
     with open(file_name, "rt") as source:
         for line_cnt, line in enumerate(source):
             line = line.strip()
             if line_cnt == 0 or len(line) == 0 or line.startswith("#"):
                 continue
-            segment, boundaries = parse_scn_boundaries_string_entry(string_entry=line, separator=separator, cn_separator=cn_separator)
+            segment, boundaries = parse_scn_boundaries_string_entry(string_entry=line, separator=separator, cn_separator=cn_separator, allow_unit_segments=allow_unit_segments)
             for clone_id in clone_ids:
                 result[clone_id][segment.stable_id_non_hap][Haplotype.A] = boundaries[clone_id][Haplotype.A]
                 result[clone_id][segment.stable_id_non_hap][Haplotype.B] = boundaries[clone_id][Haplotype.B]

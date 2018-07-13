@@ -2,35 +2,8 @@ from collections import defaultdict
 
 from dassp.core.graph import IntervalAdjacencyGraph
 from dassp.core.structures import SegmentCopyNumberProfile, AdjacencyCopyNumberProfile, check_and_fill_segments_to_fragments
-from dassp.core.structures import Phasing, AdjacencyType, Haplotype
+from dassp.core.structures import Phasing, AdjacencyType, Haplotype, get_aabb_for_ra, get_abba_for_na_and_position
 import gurobi as g
-
-
-def get_aabb_for_ra(haplotype):
-    if haplotype == Haplotype.A:
-        return Phasing.AA
-    elif haplotype == Haplotype.B:
-        return Phasing.BB
-    else:
-        raise Exception()
-
-
-def get_abba_for_na_and_position(novel_adjacency, position, haplotype):
-    left = novel_adjacency.position1.stable_id_non_hap if novel_adjacency.is_sorted_non_phased else novel_adjacency.position2.stable_id_non_hap
-    if position.stable_id_non_hap == left:
-        if haplotype == Haplotype.A:
-            return Phasing.AB
-        elif haplotype == Haplotype.B:
-            return Phasing.BA
-        else:
-            raise Exception()
-    else:
-        if haplotype == Haplotype.A:
-            return Phasing.BA
-        elif haplotype == Haplotype.B:
-            return Phasing.AB
-        else:
-            raise Exception()
 
 
 class SatModelSingleClone(object):
