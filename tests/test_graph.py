@@ -1,8 +1,7 @@
 import unittest
 
-from core.graph import IntervalAdjacencyGraph
-from dassp.core.io import PCAWGVCFNovelAdjacencyReader, BattenbergSegmentReader
-from dassp.core.structures import Position, Strand, Segment, Adjacency, AdjacencyType
+from rck.core.graph import IntervalAdjacencyGraph
+from rck.core.structures import Position, Strand, Segment, Adjacency, AdjacencyType
 
 
 class TestIntervalAdjacencyGraph(unittest.TestCase):

@@ -1,7 +1,7 @@
 import unittest
 
-from core.structures import PositionCluster, SegmentCopyNumberRecord
-from dassp.core.structures import Strand, Position, Segment, Adjacency
+from rck.core.structures import PositionCluster
+from rck.core.structures import Strand, Position, Segment, Adjacency
 
 
 class StrandTestCase(unittest.TestCase):
@@ -110,60 +110,6 @@ class PositionClusterTestCase(unittest.TestCase):
     def test_interning_sorting_on_creation(self):
         pc = PositionCluster(positions=[self.position3, self.position1, self.position2])
         self.assertListEqual(pc.positions, [self.position2, self.position1, self.position3])
-
-
-class SegmentCopyNumberRecordTestCase(unittest.TestCase):
-    def setUp(self):
-        self.position1 = Position(chromosome="chr1", coordinate=1, strand=Strand.REVERSE)
-        self.position2 = Position(chromosome="chr1", coordinate=2, strand=Strand.FORWARD)
-
-        self.s1 = Segment(start_position=self.position1, end_position=self.position2)
-
-    def test_transform_to_non_allele_specific(self):
-        maj_a_cn = 1
-        maj_b_cn = 1
-        scnr = SegmentCopyNumberRecord(segment=self.s1, maj_a_cn=maj_a_cn, maj_b_cn=maj_b_cn)
-        nas_cnr = SegmentCopyNumberRecord.to_non_allele_specific(scnr=scnr)
-        self.assertEqual(nas_cnr.maj_a_segmentcn.segment, self.s1)
-        self.assertFalse(nas_cnr.allele_specific)
-        self.assertEqual(nas_cnr.maj_b_segmentcn.segment, self.s1)
-        self.assertEqual(nas_cnr.min_a_segmentcn.segment, self.s1)
-        self.assertEqual(nas_cnr.min_b_segmentcn.segment, self.s1)
-        self.assertEqual(nas_cnr.maj_a_segmentcn.cn, maj_a_cn + maj_b_cn)
-        self.assertEqual(nas_cnr.maj_b_segmentcn.cn, 0)
-        self.assertEqual(nas_cnr.min_a_segmentcn.cn, maj_a_cn + maj_b_cn)
-        self.assertEqual(nas_cnr.min_b_segmentcn.cn, 0)
-        self.assertFalse(nas_cnr.distinct_min_cn)
-
-    def test_to_non_allele_specific_distinct_minority(self):
-        maj_a_cn = 2
-        maj_b_cn = 1
-        min_a_cn = 1
-        min_b_cn = 1
-        scnr = SegmentCopyNumberRecord(segment=self.s1, maj_a_cn=maj_a_cn, maj_b_cn=maj_b_cn, min_a_cn=min_a_cn, min_b_cn=min_b_cn)
-        nas_cnr = SegmentCopyNumberRecord.to_non_allele_specific(scnr=scnr)
-        self.assertFalse(nas_cnr.allele_specific)
-        self.assertEqual(nas_cnr.maj_a_segmentcn.segment, self.s1)
-        self.assertEqual(nas_cnr.maj_b_segmentcn.segment, self.s1)
-        self.assertEqual(nas_cnr.min_a_segmentcn.segment, self.s1)
-        self.assertEqual(nas_cnr.min_b_segmentcn.segment, self.s1)
-        self.assertEqual(nas_cnr.maj_a_segmentcn.cn, maj_a_cn + maj_b_cn)
-        self.assertEqual(nas_cnr.maj_b_segmentcn.cn, 0)
-        self.assertEqual(nas_cnr.min_a_segmentcn.cn, min_a_cn + min_b_cn)
-        self.assertEqual(nas_cnr.min_b_segmentcn.cn, 0)
-        self.assertTrue(nas_cnr.distinct_min_cn)
-
-    def test_to_non_allele_specific_non_allele_specific(self):
-        maj_a_cn = 2
-        maj_b_cn = 1
-        min_a_cn = 1
-        min_b_cn = 1
-        scnr = SegmentCopyNumberRecord(segment=self.s1, maj_a_cn=maj_a_cn, maj_b_cn=maj_b_cn, min_a_cn=min_a_cn, min_b_cn=min_b_cn)
-        nas_cnr = SegmentCopyNumberRecord.to_non_allele_specific(scnr=scnr)
-        self.assertFalse(nas_cnr.allele_specific)
-        nas_cnr2 = SegmentCopyNumberRecord.to_non_allele_specific(scnr=nas_cnr)
-        self.assertEqual(nas_cnr, nas_cnr2)
-        self.assertFalse(nas_cnr2.allele_specific)
 
 
 if __name__ == '__main__':
