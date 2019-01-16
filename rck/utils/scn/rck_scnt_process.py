@@ -65,7 +65,7 @@ def main():
         scnts_by_name = {}
         segments_by_name = {}
         clone_ids_by_scnt = {}
-        logger.info("Readeing input SCNTs")
+        logger.info("Reading input SCNTs")
         for name, path in scnt_files.items():
             logger.debug("Reading SCNT from {file}".format(file=scnt_files[name]))
             segments, scnt = read_scnt_from_file(file_name=scnt_files[name], separator=args.separator)
@@ -93,7 +93,7 @@ def main():
         for name, new_name in result_base_names.items():
             scnt = aligned_scnts_by_name[name]
             segments = aligned_segments_by_name[name]
-            scnt_path = os.path.join(output_dir, new_name + ".scnt.tsv")
+            scnt_path = os.path.join(output_dir, new_name + "rck.scnt.tsv")
             logger.debug("Writing aligned SCNT {scnt_name} to {file}".format(scnt_name=name, file=scnt_path))
             write_scnt_to_file(file_name=scnt_path, segments=segments, scnt=scnt, separator=args.separator)
     logger.info("Success!")
