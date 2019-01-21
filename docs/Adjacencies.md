@@ -51,7 +51,7 @@ While the adjacencies themselves are self-explanatory, the main important peace 
 
 The `cn` value is a python/JSON dict with the following structure:
 
-```json
+```
 {
   'clone_id': {
     'AA': int,

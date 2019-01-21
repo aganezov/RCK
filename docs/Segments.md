@@ -38,7 +38,7 @@ The result of the main RCK algorithm (via `rck` executable) contains the `rck.sc
 While the segments themselves are self-explanatory, the main important peace of information about them is the `cn` field in the `extra` column, that encode clone- and haplotype-specific copy number values.
 
 The `cn` value is a python/JSON dict with the following structure:
-```json
+```
 {
   'clone_id' : {
     'A': int,
