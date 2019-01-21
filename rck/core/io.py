@@ -28,6 +28,8 @@ STRAND1 = "strand1"
 STRAND2 = "strand2"
 EXTRA = "extra"
 COPY_NUMBER = "cn"
+OLD_SEGMENTS_CNS = "CNs"
+OLD_ADJACENCIES_CNS = "CNs"
 COPY_NUMBER_BOUNDARIES = "cnb"
 ADJACENCY_TYPE = "at"
 
@@ -189,11 +191,11 @@ def read_scnb_from_source(source, clone_ids=None, separator="\t", extra_separato
                                  "".format(source=source, cn=COPY_NUMBER, extra=EXTRA))
     scnb = extract_scnb_from_segments(segments=segments, clone_ids=clone_ids, allow_missing=allow_missing)
     if remove_cnb_data_from_segs:
-        remove_cnb_from_segments(segments=segments)
+        remove_cnb_data_from_segments(segments=segments)
     return segments, scnb
 
 
-def remove_cnb_from_segments(segments):
+def remove_cnb_data_from_segments(segments):
     for segment in segments:
         if COPY_NUMBER_BOUNDARIES in segment.extra:
             del segment.extra[COPY_NUMBER_BOUNDARIES]
@@ -272,6 +274,17 @@ def parse_segment_extra_cn_string(segment_cn_string):
     return dict(result)
 
 
+def parse_segment_old_cn_string(old_cn_string):
+    per_clone_entries = old_cn_string.split(";")
+    result = {}
+    for per_clone_entry in per_clone_entries:
+        per_clone_entry = per_clone_entry[1:-1]
+        clone, cna, cnb = per_clone_entry.split(",")
+        cna, cnb = int(cna), int(cnb)
+        result[clone] = {Haplotype.A: cna, Haplotype.B: cnb}
+    return result
+
+
 def parse_segment_extra(extra, extra_separator=";"):
     result = {}
     extra_entries = extra.split(extra_separator)
@@ -292,6 +305,8 @@ def stream_segments_from_source(source, separator="\t", extra_separator=";"):
         start = int(row[START])
         end = int(row[END])
         extra_dict = {}
+        if OLD_SEGMENTS_CNS in row:
+            extra_dict[COPY_NUMBER] = parse_segment_old_cn_string(old_cn_string=row[OLD_SEGMENTS_CNS])
         if EXTRA in row:
             supp_extra_dict = parse_segment_extra(extra=row[EXTRA], extra_separator=extra_separator)
             extra_dict.update(supp_extra_dict)
@@ -407,7 +422,6 @@ def write_scnb_to_destination(destination, segments, scnb, clone_ids=None, separ
                                   sort_segments=sort_segments)
 
 
-
 EXTERNAL_NA_ID = AID
 SVTYPE = "svtype"
 
@@ -420,6 +434,22 @@ def parse_adjacency_extra_cn_string(adjacency_cn_string):
             cn = int(data[phasing_str])
             phasing = Phasing[phasing_str]
             result[clone_id][phasing] = cn
+    return result
+
+
+def parse_adjacency_old_cn_string(old_cn_string):
+    clone_specific_data = old_cn_string.split(";")
+    result = {}
+    for clone_specific_string in clone_specific_data:
+        clone_specific_string = clone_specific_string[1:-1]
+        clone, cnaa, cnab, cnba, cnbb = clone_specific_string.split(",")
+        cnaa, cnab, cnba, cnbb = int(cnaa), int(cnab), int(cnba), int(cnbb)
+        result[clone] = {
+            Phasing.AA: cnaa,
+            Phasing.AB: cnab,
+            Phasing.BA: cnba,
+            Phasing.BB: cnbb
+        }
     return result
 
 
@@ -453,6 +483,8 @@ def stream_adjacencies_from_source(source, extra_separator=";", separator="\t"):
         strand1 = Strand.from_pm_string(string=row[STRAND1])
         strand2 = Strand.from_pm_string(string=row[STRAND2])
         extra_dict = {EXTERNAL_NA_ID: row[EXTERNAL_NA_ID]}
+        if OLD_ADJACENCIES_CNS in row:
+            extra_dict[COPY_NUMBER] = parse_adjacency_old_cn_string(old_cn_string=row[OLD_ADJACENCIES_CNS])
         if EXTRA in row:
             supp_extra_dict = parse_adjacency_extra(extra=row[EXTRA], extra_separator=extra_separator)
             extra_dict.update(supp_extra_dict)
@@ -662,10 +694,12 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
 
 
 def write_acnt_to_file(file_name, acnt, adjacencies, clone_ids=None,
-                       extra="all", extra_fill="", extra_separator=";", separator="\t", sort_adjacencies=True, output_reference=True, inplace=True):
+                       extra="all", extra_fill="", extra_separator=";", separator="\t", sort_adjacencies=True, output_reference=True, inplace=True,
+                       mix_reference_and_novel=False):
     with open(file_name, "wt") as destination:
         write_acnt_to_destination(destination=destination, acnt=acnt, adjacencies=adjacencies, clone_ids=clone_ids, extra=extra, extra_fill=extra_fill,
-                                  extra_separator=extra_separator, separator=separator, sort_adjacencies=sort_adjacencies, output_reference=output_reference, inplace=inplace)
+                                  extra_separator=extra_separator, separator=separator, sort_adjacencies=sort_adjacencies, output_reference=output_reference, inplace=inplace,
+                                  mix_reference_and_novel=mix_reference_and_novel)
 
 
 def iter_adjacencies_acnt_dummy(adjacencies, acnt, clone_ids=None, inplace=True):
@@ -688,10 +722,19 @@ def iter_adjacencies_acnt_dummy(adjacencies, acnt, clone_ids=None, inplace=True)
 
 
 def write_acnt_to_destination(destination, acnt, adjacencies, clone_ids=None,
-                              extra="all", extra_fill="", extra_separator=";", separator="\t", sort_adjacencies=True, output_reference=True, inplace=False):
-    ref_adjacencies = filter(lambda a: a.adjacency_type == AdjacencyType.REFERENCE, adjacencies)
-    nov_adjacencies = filter(lambda a: a.adjacency_type == AdjacencyType.NOVEL, adjacencies)
-    entries = nov_adjacencies
+                              extra="all", extra_fill="", extra_separator=";", separator="\t", sort_adjacencies=True, output_reference=True, inplace=False,
+                              mix_reference_and_novel=False):
+    ref_adjacencies = list(filter(lambda a: a.adjacency_type == AdjacencyType.REFERENCE, adjacencies))
+    nov_adjacencies = list(filter(lambda a: a.adjacency_type == AdjacencyType.NOVEL, adjacencies))
+    if mix_reference_and_novel:
+        entries = nov_adjacencies + ref_adjacencies
+        if sort_adjacencies:
+            entries = sorted(entries, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
+    else:
+        if sort_adjacencies:
+            nov_adjacencies = sorted(nov_adjacencies, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
+            ref_adjacencies = sorted(ref_adjacencies, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
+        entries = nov_adjacencies + ref_adjacencies
     if output_reference:
         entries = itertools.chain(entries, ref_adjacencies)
     if clone_ids is None:
@@ -702,7 +745,7 @@ def write_acnt_to_destination(destination, acnt, adjacencies, clone_ids=None,
     elif not extra_description_is_all(extra=extra) and COPY_NUMBER not in extra:
         extra.append(COPY_NUMBER)
     write_adjacencies_to_destination(destination=destination, adjacencies=entries,
-                                     extra=extra, extra_fill=extra_fill, extra_separator=extra_separator, separator=separator, sort_adjacencies=sort_adjacencies)
+                                     extra=extra, extra_fill=extra_fill, extra_separator=extra_separator, separator=separator, sort_adjacencies=False)
 
 
 def read_acnt_from_source(source, clone_ids=None, extra_separator=";", separator="\t", remove_cn_data_from_adj=True):
@@ -912,7 +955,7 @@ def write_adjacency_groups_to_file(file_name, adjacency_groups, separator="\t", 
                                    extra="all", extra_separator=";", extra_fill=""):
     with open(file_name, "wt") as destination:
         write_adjacency_groups_to_destination(destination=destination, adjacency_groups=adjacency_groups, separator=separator,
-                                              aids_separator=aids_separator, extra=extra,  extra_separator=extra_separator, extra_fill=extra_fill)
+                                              aids_separator=aids_separator, extra=extra, extra_separator=extra_separator, extra_fill=extra_fill)
 
 
 def write_adjacency_groups_to_destination(destination, adjacency_groups, separator="\t", aids_separator=",",

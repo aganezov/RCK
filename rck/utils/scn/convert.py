@@ -2,6 +2,7 @@ import csv
 import math
 
 from rck.core.structures import SegmentCopyNumberProfile, Segment, Haplotype
+from rck.utils.adj.convert import strip_chr
 
 BATTENBERG_SAMPLE_NAME = "sample"
 BATTENBERG_CHROMOSOME = "chr"
@@ -23,12 +24,12 @@ def battenberg_get_subclonal_cn(subclonal_cn_string, clonal_cn_int):
     return battenberg_force_non_negativity(int(subclonal_cn_string))
 
 
-def battenberg_get_scnt_from_battenberg_file(file_name, sample_name, separator="\t"):
+def battenberg_get_scnt_from_battenberg_file(file_name, sample_name, separator="\t", chr_strip=True):
     with open(file_name, "rt") as source:
-        return get_scnt_from_battenberg_source(source=source, sample_name=sample_name, separator=separator)
+        return get_scnt_from_battenberg_source(source=source, sample_name=sample_name, separator=separator, chr_strip=chr_strip)
 
 
-def get_scnt_from_battenberg_source(source, sample_name, separator="\t"):
+def get_scnt_from_battenberg_source(source, sample_name, separator="\t", chr_strip=True):
     clone1_name = "1"
     clone2_name = "2"
     scnt = {clone1_name: SegmentCopyNumberProfile(), clone2_name: SegmentCopyNumberProfile()}
@@ -40,6 +41,8 @@ def get_scnt_from_battenberg_source(source, sample_name, separator="\t"):
         start_coordinate = int(row[BATTENBERG_START_POSITION])
         end_coordinate = int(row[BATTENBERG_END_POSITION])
         chromosome = row[BATTENBERG_CHROMOSOME]
+        if chr_strip:
+            chromosome = strip_chr(chr_string=chromosome)
         segment = Segment.from_chromosome_coordinates(chromosome=chromosome, start=start_coordinate, end=end_coordinate)
         clone1_scnp = scnt[clone1_name]
         clone2_scnp = scnt[clone2_name]
@@ -81,14 +84,14 @@ def hatchet_get_clone_ids_from_file(file_name, sample_name, separator="\t", min_
     return sorted(result)
 
 
-def get_scnt_from_hatchet_file(file_name, sample_name, separator="\t", clone_ids=None, min_usage=0.01):
+def get_scnt_from_hatchet_file(file_name, sample_name, separator="\t", clone_ids=None, min_usage=0.01, chr_strip=True):
     if clone_ids is None:
         clone_ids = hatchet_get_clone_ids_from_file(file_name=file_name, sample_name=sample_name, separator=separator, min_usage=min_usage)
     with open(file_name, "rt") as source:
-        return get_scnt_from_hatchet_source(source=source, separator=separator, clone_ids=clone_ids)
+        return get_scnt_from_hatchet_source(source=source, separator=separator, clone_ids=clone_ids, chr_strip=chr_strip)
 
 
-def get_scnt_from_hatchet_source(source, clone_ids=None, separator="\t"):
+def get_scnt_from_hatchet_source(source, clone_ids, separator="\t", chr_strip=True):
     scnt = {clone_id: SegmentCopyNumberProfile() for clone_id in clone_ids}
     segments = []
     clone_id_mappings = {}
@@ -109,6 +112,8 @@ def get_scnt_from_hatchet_source(source, clone_ids=None, separator="\t"):
         if sample_name != sample_name:
             continue
         chromosome = data[0]
+        if chr_strip:
+            chromosome = strip_chr(chr_string=chromosome)
         start_coord = int(data[1])
         end_coord = int(data[2]) - 1
         segment = Segment.from_chromosome_coordinates(chromosome=chromosome, start=start_coord, end=end_coord)
@@ -133,12 +138,12 @@ REMIXT_CLONE2_CN_A = "major_2"
 REMIXT_CLONE2_CN_B = "minor_2"
 
 
-def get_scnt_from_remixt_file(file_name, separator="\t"):
+def get_scnt_from_remixt_file(file_name, separator="\t", chr_strip=True):
     with open(file_name, "rt") as source:
-        return get_scnt_from_remixt_source(source=source, separator=separator)
+        return get_scnt_from_remixt_source(source=source, separator=separator, chr_strip=chr_strip)
 
 
-def get_scnt_from_remixt_source(source, separator="\t"):
+def get_scnt_from_remixt_source(source, separator="\t", chr_strip=True):
     segments = []
     clone1_id = "1"
     clone2_id = "2"
@@ -146,6 +151,8 @@ def get_scnt_from_remixt_source(source, separator="\t"):
     reader = csv.DictReader(source, delimiter=separator)
     for row in reader:
         chromosome = row[REMIXT_CHROMOSOME]
+        if chr_strip:
+            chromosome = strip_chr(chr_string=chromosome)
         start_coordinate = int(row[REMIXT_START_POSITION])
         end_coordinate = int(row[REMIXT_END_POSITION]) - 1
         segment = Segment.from_chromosome_coordinates(chromosome=chromosome, start=start_coordinate, end=end_coordinate)
@@ -187,21 +194,24 @@ def titan_get_clone_ids_from_file(file_name, sample_name, separator="\t"):
         return sorted(result)
 
 
-def get_scnt_from_titan_file(file_name, sample_name, clone_ids=None, separator="\t", corrected_cn_fix="None"):
+def get_scnt_from_titan_file(file_name, sample_name, clone_ids=None, separator="\t", corrected_cn_fix="None", chr_strip=True):
     if clone_ids is None:
         clone_ids = titan_get_clone_ids_from_file(file_name=file_name, sample_name=sample_name, separator=separator)
     with open(file_name, "rt") as source:
-        return get_scnt_from_titan_source(source=source, sample_name=sample_name, clone_ids=clone_ids, separator=separator, corrected_cn_fix=corrected_cn_fix)
+        return get_scnt_from_titan_source(source=source, sample_name=sample_name, clone_ids=clone_ids, separator=separator, corrected_cn_fix=corrected_cn_fix, chr_strip=chr_strip)
 
 
-def get_scnt_from_titan_source(source, sample_name, clone_ids, separator="\t", corrected_cn_fix="None"):
+def get_scnt_from_titan_source(source, sample_name, clone_ids, separator="\t", corrected_cn_fix="None", chr_strip=True):
     scnt = {clone_id: SegmentCopyNumberProfile() for clone_id in clone_ids}
     segments = []
     reader = csv.DictReader(source, delimiter=separator)
     for row in reader:
         if row[TITAN_SAMPLE_NAME] != sample_name:
             continue
-        segment = Segment.from_chromosome_coordinates(chromosome=row[TITAN_CHROMOSOME], start=int(row[TITAN_START_POSITION]), end=int(row[TITAN_END_POSITION]))
+        chromosome = row[TITAN_CHROMOSOME]
+        if chr_strip:
+            chromosome = strip_chr(chr_string=chromosome)
+        segment = Segment.from_chromosome_coordinates(chromosome=chromosome, start=int(row[TITAN_START_POSITION]), end=int(row[TITAN_END_POSITION]))
         sid = segment.stable_id_non_hap
         segments.append(segment)
         major_cn, minor_cn = int(row[TITAN_MAJOR_CN]), int(row[TITAN_MINOR_CN])

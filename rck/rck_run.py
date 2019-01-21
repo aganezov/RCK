@@ -15,7 +15,7 @@ from rck.core.io import read_adjacencies_from_file, write_acnt_to_file, get_logg
     read_segments_from_file, \
     extract_scnt_from_segments, extract_scnb_from_segments, read_scnb_from_file, get_full_path, write_scnt_to_file, EXTERNAL_NA_ID, FALSE_POSITIVE, remove_cn_data_from_segments, \
     write_scnb_to_file, write_adjacencies_to_file, write_segments_to_file, write_adjacency_groups_to_file, remove_cn_data_from_adjacencies, read_positions_from_file, \
-    write_positions_to_file
+    write_positions_to_file, remove_cnb_data_from_segments
 from rck.core.process import positions_aligned, adj_groups_concur
 from rck.core.structures import get_segments_for_fragments_ids_dict, get_ref_telomeres_from_segments, get_ref_adjacencies_from_segments, SegmentCopyNumberBoundaries, refined_scnt, \
     refined_scnb, refined_scnt_with_adjacencies_and_telomeres, extract_spanned_extremities, SCNBoundariesStrategies, LengthSpreadRelationships, AdjacencyType, AdjacencyGroupType, \
@@ -37,7 +37,7 @@ def main():
 
     parser.add_argument("--workdir", default=None)
 
-    parser.add_argument("--clone_ids", default=None)
+    parser.add_argument("--clone-ids", default=None)
 
     parser.add_argument("--scnb", default=None)
     parser.add_argument("--scnb-separator", default="\t")
@@ -112,6 +112,7 @@ def main():
     output_group.add_argument("--o-scnt-extra-separator", default=";")
     output_group.add_argument("--o-acnt-separator", default="\t")
     output_group.add_argument("--o-acnt-extra-separator", default=";")
+    output_group.add_argument("--o-acnt-mix-novel-and-reference", action="store_true",)
     ###
     post_group = parser.add_argument_group()
     post_group.add_argument("--post-check-scnb", action="store_true", dest="post_check_scnb")
@@ -361,12 +362,13 @@ def main():
 
     preprocessed_scnt_file = os.path.join(preprocessed_input_dir_path, "rck.scnt.tsv")
     remove_cn_data_from_segments(segments=segments)
+    remove_cnb_data_from_segments(segments=segments)
     logger.info("Writing (preprocessed) allele-specific segment copy number data to {file}".format(file=preprocessed_scnt_file))
-    write_scnt_to_file(file_name=preprocessed_scnt_file, segments=segments, scnt=scnt, clone_ids=clone_ids)
+    write_scnt_to_file(file_name=preprocessed_scnt_file, segments=segments, scnt=scnt, clone_ids=clone_ids, inplace=False)
 
     preprocessed_scnb_file = os.path.join(preprocessed_input_dir_path, "rck.scnb.tsv")
     logger.info("Writing (preprocessed) segment copy number boundaries information to {file}".format(file=preprocessed_scnb_file))
-    write_scnb_to_file(file_name=preprocessed_scnb_file, segments=segments, scnb=scnb, clone_ids=clone_ids)
+    write_scnb_to_file(file_name=preprocessed_scnb_file, segments=segments, scnb=scnb, clone_ids=clone_ids, inplace=False)
 
     preprocessed_input_adjacencies_file = os.path.join(preprocessed_input_dir_path, "rck.adj.tsv")
     logger.info("Writing (preprocessed) input adjacencies data to {file}".format(file=preprocessed_input_adjacencies_file))
@@ -480,7 +482,7 @@ def main():
     acnt_base_name = re.sub("\.+", ".", acnt_base_name)
     acnt_file_path = os.path.join(output_dir, acnt_base_name)
     logger.info("Writing inferred diploid adjacency copy number data to {file}".format(file=acnt_file_path))
-    write_acnt_to_file(file_name=acnt_file_path, acnt=acnt, adjacencies=adjacencies, output_reference=True)
+    write_acnt_to_file(file_name=acnt_file_path, acnt=acnt, adjacencies=adjacencies, output_reference=True, mix_reference_and_novel=args.o_acnt_mix_novel_and_reference)
 
     #########
     #

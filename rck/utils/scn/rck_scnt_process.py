@@ -10,7 +10,7 @@ sys.path.append(current_dir)
 
 from rck.core.io import get_logging_cli_parser, get_standard_logger_from_args, get_full_path, read_scnt_from_file, write_scnt_to_file, \
     write_scnt_to_destination, read_scnt_from_source
-from rck.core.structures import align_scnts, refined_scnt
+from rck.core.structures import aligned_scnts, refined_scnt, cn_distance_inter_scnt
 
 
 def main():
@@ -36,6 +36,16 @@ def main():
     align_parser.add_argument("--output-suffix", default="aligned")
     align_parser.add_argument("--no-allow-unit-segments", action="store_false", dest="allow_unit_segments")
     align_parser.add_argument("--output-dir", default="")
+    ###
+    distance_parser = subparsers.add_parser("distance", parents=cli_logging_parser)
+    distance_parser.add_argument("--scnt1", type=argparse.FileType("rt"), required=True)
+    distance_parser.add_argument("--scnt1-separator", default="\t")
+    distance_parser.add_argument("--scnt1-extra-separator", default=";")
+    distance_parser.add_argument("--scnt2", type=argparse.FileType("rt"), required=True)
+    distance_parser.add_argument("--scnt2-separator", default="\t")
+    distance_parser.add_argument("--scnt2-extra-separator", default=";")
+    distance_parser.add_argument("--clone-ids", default=None)
+    distance_parser.add_argument("--output", "-o", type=argparse.FileType("wt"), default=sys.stdout)
     ###
     args = parser.parse_args()
     logger = get_standard_logger_from_args(args=args, program_name="RCK-UTILS-SCNT-process")
@@ -77,7 +87,7 @@ def main():
             aligned_segments_by_name, aligned_scnts_by_name = segments_by_name, scnts_by_name
         else:
             logger.info("Aligning input SCNTs.")
-            aligned_segments_by_name, aligned_scnts_by_name = align_scnts(segments_by_sample_names=segments_by_name, scnts_by_sample_names=scnts_by_name)
+            aligned_segments_by_name, aligned_scnts_by_name = aligned_scnts(segments_by_sample_names=segments_by_name, scnts_by_sample_names=scnts_by_name)
         result_base_names = {}
         cnt = 0
         for name in sorted(scnt_files.keys()):
@@ -96,6 +106,23 @@ def main():
             scnt_path = os.path.join(output_dir, new_name + "rck.scnt.tsv")
             logger.debug("Writing aligned SCNT {scnt_name} to {file}".format(scnt_name=name, file=scnt_path))
             write_scnt_to_file(file_name=scnt_path, segments=segments, scnt=scnt, separator=args.separator)
+    elif args.command == "distance":
+        clone_ids = args.clone_ids
+        if args.clone_ids is not None:
+            clone_ids = args.clone_ids.split(",")
+        segments1, scnt1 = read_scnt_from_source(source=args.scnt1, clone_ids=clone_ids, separator=args.scnt1_separator,
+                                                 extra_separator=args.scnt1_extra_separator, remove_cn_data_from_segs=True)
+        segments2, scnt2 = read_scnt_from_source(source=args.scnt2, clone_ids=clone_ids, separator=args.scnt2_separator,
+                                                 extra_separator=args.scnt2_extra_separator, remove_cn_data_from_segs=True)
+        segments_by_sample_names = {"1": segments1, "2": segments2}
+        scnts_by_sample_names = {"1": scnt1, "2": scnt2}
+        segments_by_sample_names, scnts_by_sample_names = aligned_scnts(segments_by_sample_names=segments_by_sample_names,
+                                                                        scnts_by_sample_names=scnts_by_sample_names)
+        segments = segments_by_sample_names["1"]
+        scnt1, scnt2 = scnts_by_sample_names["1"], scnts_by_sample_names["2"]
+        distance = cn_distance_inter_scnt(tensor1=scnt1, tensor2=scnt2, segments=segments, check_clone_ids_match=True)
+        print("distance = ", distance)
+
     logger.info("Success!")
 
 

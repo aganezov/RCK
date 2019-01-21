@@ -1687,11 +1687,11 @@ def set_cnr(parent_fragment, fcnt, child_segment, scnt):
                                      cn=fcnt[clone_id].get_cn(sid=parent_fragment.stable_id_non_hap, haplotype=Haplotype.B, default=0))
 
 
-def align_scnts(segments_by_sample_names, scnts_by_sample_names, fill_gaps=True, max_fill_gap=1000000000):
+def aligned_scnts(segments_by_sample_names, scnts_by_sample_names, fill_gaps=True, max_fill_gap=1000000000):
     sample_names = sorted(segments_by_sample_names.keys())
     for sample_name in sample_names:
         if sample_name not in scnts_by_sample_names:
-            raise Exception()
+            raise ValueError("Sample {sample} is present w.r.t. segments, and not in SCNTs".format(sample=sample_name))
     result_segments_by_sample_names = {sample_name: [] for sample_name in sample_names}
     result_scnts_by_sample_names = {sample_name: deepcopy(scnts_by_sample_names[sample_name]) for sample_name in sample_names}
     if fill_gaps:

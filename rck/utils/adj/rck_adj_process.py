@@ -58,7 +58,7 @@ def main():
     merge = subparsers.add_parser("merge", parents=[shared_parser, cli_logging_parser], help="EXPERIMENTAL! Merge Adjacencies in input files (NOTE: different from \"cat\").")
     merge.add_argument("rck_adj", type=argparse.FileType("rt"), nargs="+", default=[sys.stdin])
     merge.add_argument("--max-distance", type=int, default=500)
-    merge.add_argument("--enforce-sv-types", action="store_true", dest="enforce_sv_types")
+    merge.add_argument("--enforce-sv-types", action="store_true", dest="enforce_sv_types", usage=argparse.SUPPRESS)
     merge.add_argument("--merged-field", default="origin_ids")
     merge.add_argument("--merged-id-template", default="{cnt}_merged")
     ####

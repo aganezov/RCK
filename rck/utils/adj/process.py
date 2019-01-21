@@ -235,7 +235,6 @@ def filter_nas_by_chromosomal_regions(nas, include=None, exclude=None, include_b
 
 def get_shared_nas_parser():
     shared_parser = argparse.ArgumentParser(add_help=False)
-    shared_parser.add_argument("--no-strip-chr", action="store_false", dest="strip_chr")
     shared_parser.add_argument("--no-append-id", action="store_false", dest="append_id_suffix")
     shared_parser.add_argument("--o-extra-fields", default="all")
     shared_parser.add_argument("--chrs-include", action="append", nargs=1)
@@ -243,6 +242,12 @@ def get_shared_nas_parser():
     shared_parser.add_argument("--chrs-exclude", action="append", nargs=1)
     shared_parser.add_argument("--chrs-exclude-file", type=argparse.FileType("rt"))
     return shared_parser
+
+
+def get_chromosome_strip_parser():
+    chr_strip_parser = argparse.ArgumentParser(add_help=False)
+    chr_strip_parser = chr_strip_parser.add_argument("--no-strip-chr", action="store_false", dest="strip_chr")
+    return chr_strip_parser
 
 
 def get_chromosome_regions_dict(string_entries):
@@ -402,6 +407,10 @@ def refined_adjacencies_reciprocal(novel_adjacencies, max_distance, inplace=Fals
             if positions_are_reciprocal(p1=lp, p2=rp, max_distance=max_distance):
                 lp_adjacencies = adjacencies_by_positions[lp]
                 rp_adjacencies = adjacencies_by_positions[rp]
+                lp_adjacencies_ids = {a.stable_id_non_phased for a in lp_adjacencies}
+                rp_adjacencies_ids = {a.stable_id_non_phased for a in rp_adjacencies}
+                if len(lp_adjacencies_ids & rp_adjacencies_ids) > 0:
+                    continue
                 new_p1, new_p2 = merged_reciprocal_positions(p1=lp, p2=rp)
                 if new_p1.strand == rp.strand:
                     new_p1, new_p2 = new_p2, new_p1

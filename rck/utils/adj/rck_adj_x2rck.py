@@ -12,7 +12,7 @@ sys.path.append(current_dir)
 import rck
 from rck.core.io import get_logging_cli_parser, get_standard_logger_from_args
 from rck.utils.adj.convert import *
-from rck.utils.adj.process import filter_nas_by_chromosomal_regions, get_shared_nas_parser, processed_gundem2015_adjacencies
+from rck.utils.adj.process import filter_nas_by_chromosomal_regions, get_shared_nas_parser, processed_gundem2015_adjacencies, get_chromosome_strip_parser
 
 
 def main():
@@ -22,44 +22,45 @@ def main():
     shared_parser = get_shared_nas_parser()
     shared_parser.add_argument("--output", "-o", dest="rck_adj_file", type=argparse.FileType("wt"), default=sys.stdout)
     cli_logging_parser = get_logging_cli_parser()
+    chr_strip_parser = get_chromosome_strip_parser()
     ####
     subparsers = parser.add_subparsers(title="commands", dest="command")
     subparsers.required = True
     ####
-    lumpy_parser = subparsers.add_parser("lumpy", parents=[shared_parser, cli_logging_parser], help="Convert Lumpy VCF SV calls into RCK NAS format")
+    lumpy_parser = subparsers.add_parser("lumpy", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert Lumpy VCF SV calls into RCK NAS format")
     lumpy_parser.add_argument("--id-suffix", dest="id_suffix", default="lumpy")
     lumpy_parser.add_argument("lumpy_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
-    longranger_parser = subparsers.add_parser("longranger", parents=[shared_parser, cli_logging_parser], help="Convert LongRanger VCF SV calls into RCK NAS format")
+    longranger_parser = subparsers.add_parser("longranger", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert LongRanger VCF SV calls into RCK NAS format")
     longranger_parser.add_argument("--id-suffix", dest="id_suffix", default="longranger")
     longranger_parser.add_argument("longranger_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
-    naibr_parser = subparsers.add_parser("naibr", parents=[shared_parser, cli_logging_parser], help="Convert NAIBR NAS calls into RCK NAS format")
+    naibr_parser = subparsers.add_parser("naibr", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert NAIBR NAS calls into RCK NAS format")
     naibr_parser.add_argument("--id-suffix", dest="id_suffix", default="naibr")
     naibr_parser.add_argument("naibr_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
-    manta_parser = subparsers.add_parser("manta", parents=[shared_parser, cli_logging_parser], help="Convert Manta VCF SV calls into RCK NAS format")
+    manta_parser = subparsers.add_parser("manta", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert Manta VCF SV calls into RCK NAS format")
     manta_parser.add_argument("--id-suffix", dest="id_suffix", default="manta")
     manta_parser.add_argument("manta_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
-    sniffles_parser = subparsers.add_parser("sniffles", parents=[shared_parser, cli_logging_parser], help="Convert Sniffles VCF SV calls into RCK NAS format")
+    sniffles_parser = subparsers.add_parser("sniffles", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert Sniffles VCF SV calls into RCK NAS format")
     sniffles_parser.add_argument("--id-suffix", dest="id_suffix", default="sniffles")
     sniffles_parser.add_argument("sniffles_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
-    grocsv = subparsers.add_parser("grocsv", parents=[shared_parser, cli_logging_parser], help="Convert GROCSVS VCF SV calls into RCK NAS format")
+    grocsv = subparsers.add_parser("grocsv", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert GROCSVS VCF SV calls into RCK NAS format")
     grocsv.add_argument("--id-suffix", dest="id_suffix", default="grocsv")
     grocsv.add_argument("grocsv_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
-    delly = subparsers.add_parser("delly", parents=[shared_parser, cli_logging_parser], help="Convert Delly VCF SV calls into RCK NAS format")
+    delly = subparsers.add_parser("delly", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert Delly VCF SV calls into RCK NAS format")
     delly.add_argument("--id-suffix", dest="id_suffix", default="delly")
     delly.add_argument("delly_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
     delly.add_argument("--stream", action="store_true", dest="delly_force_stream")
     ####
-    pbsv = subparsers.add_parser("pbsv", parents=[shared_parser, cli_logging_parser], help="Convert PBSV VCF SV calls into RCK NAS format")
+    pbsv = subparsers.add_parser("pbsv", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert PBSV VCF SV calls into RCK NAS format")
     pbsv.add_argument("--id-suffix", dest="id_suffix", default="pbsv")
     pbsv.add_argument("pbsv_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
-    remixt = subparsers.add_parser("remixt", parents=[shared_parser, cli_logging_parser], help="Convert ReMixT Novel adjacencies calls into RCK format")
+    remixt = subparsers.add_parser("remixt", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert ReMixT Novel adjacencies calls into RCK format")
     remixt.add_argument("--i-separator", default="\t")
     remixt.add_argument("--id-suffix", dest="id_suffix", default="remixt")
     remixt.add_argument("--clone-ids", choices=["1", "2", "1,2"], default="1,2")
@@ -67,7 +68,7 @@ def main():
     remixt.add_argument("--no-remixt-na-correction", action="store_false", dest="remixt_correction")
     remixt.add_argument("remixt_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
-    gundem2015_parser = subparsers.add_parser("gundem2015", parents=[shared_parser, cli_logging_parser], help="Convert SV calls from Gundem et al (2015) (BRASS2???) "
+    gundem2015_parser = subparsers.add_parser("gundem2015", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert SV calls from Gundem et al (2015) (BRASS2???) "
                                                                                                               "into RCK NAS format")
     gundem2015_parser.add_argument("--id-suffix", dest="id_suffix", default="gundem2015")
     gundem2015_parser.add_argument("gundem2015_file", type=argparse.FileType("rt"), default=sys.stdin)
