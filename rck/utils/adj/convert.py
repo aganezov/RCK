@@ -5,7 +5,7 @@ from copy import deepcopy
 import vcf
 
 from rck.core.io import EXTERNAL_NA_ID, SVTYPE, write_adjacencies_to_destination, COPY_NUMBER
-from rck.core.structures import Strand, Position, Adjacency, AdjacencyType, Phasing
+from rck.core.structures import Strand, Position, Adjacency, AdjacencyType, Phasing, Segment
 
 STRIP_CHR = "strip_CHR"
 APPEND_ID = "append_id"
@@ -432,8 +432,13 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
         svtype = record.INFO.get("SVTYPE", "")
         chr1 = record.CHROM
         coord1 = int(record.POS)
-        chr2 = record.INFO["CHR2"]
-        coord2 = int(record.INFO["END"])
+        if "CHR2" in record.INFO:
+            chr2 = record.INFO["CHR2"]
+            coord2 = int(record.INFO["END"])
+        else:
+            record_breakend = record.ALT[0]
+            chr2 = record_breakend.chr
+            coord2 = record_breakend.pos
         try:
             strands = record.INFO["STRANDS"]
             if isinstance(strands, (list, tuple)):
@@ -470,7 +475,7 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
     return nas_by_ids.values()
 
 
-def get_nas_from_grocsv_vcf_records(grocsv_vcf_records, setup=None):
+def get_nas_from_grocsv_vcf_records(grocsv_vcf_records, setup=None, samples=None, sample_all_any="any", samples_only=False):
     if setup is None:
         setup = {}
     nas_by_ids = defaultdict(list)
@@ -486,6 +491,22 @@ def get_nas_from_grocsv_vcf_records(grocsv_vcf_records, setup=None):
             mate_vcf_record_id = record.INFO["MATEID"]
             svid = record.INFO["EVENT"]
             mate_vcf_record = records_by_ids[mate_vcf_record_id]
+            processed_ids.add(record_id)
+            processed_ids.add(mate_vcf_record_id)
+            if samples is not None:
+                present = {}
+                for format_sample in record.samples:
+                    present[format_sample.sample] = str(format_sample.data.GT) == "1"
+                refute = False
+                if samples_only:
+                    refute = any([value for key, value in present.items() if key not in samples])
+                if sample_all_any == "any":
+                    present = any([present.get(sample_name, True) for sample_name in samples])
+                else:
+                    present = all([present.get(sample_name, True) for sample_name in samples])
+                present &= not refute
+                if not present:
+                    continue
             extra.update(mate_vcf_record.INFO)
             chr1 = record.CHROM
             chr2 = mate_vcf_record.CHROM
@@ -499,8 +520,6 @@ def get_nas_from_grocsv_vcf_records(grocsv_vcf_records, setup=None):
             pos2 = Position(chromosome=chr2, coordinate=coord2, strand=strand2)
             extra[EXTERNAL_NA_ID] = svid
             na = Adjacency(position1=pos1, position2=pos2, extra=extra)
-            processed_ids.add(record_id)
-            processed_ids.add(mate_vcf_record_id)
             nas_by_ids[svid].append(na)
         else:
             raise Exception("Unknown SV type \"{svtype}\" for GROCSVS VCF entry".format(svtype=svtype))
@@ -845,12 +864,12 @@ def build_setup(args):
     return result
 
 
-def get_chrs_list_from_file(file_name):
+def get_chrs_regions_string_list_from_file(file_name):
     with open(file_name, "rt") as source:
-        return get_chrs_list_from_source(source=source)
+        return get_chrs_regions_string_lists_from_source(source=source)
 
 
-def get_chrs_list_from_source(source):
+def get_chrs_regions_string_lists_from_source(source):
     result = []
     for line in source:
         line = line.strip()
@@ -858,3 +877,17 @@ def get_chrs_list_from_source(source):
             continue
         result.append(line)
     return result
+
+
+def parse_segment_chr_region(string):
+    if ":" not in string and "\t" not in string:
+        return Segment.from_chromosome_coordinates(chromosome=string.strip(), start=0, end=3000000000)
+    if ":" in string:
+        chromosome, start_end = string.split(":")
+        start, end = start_end.split("-")
+        start, end = int(start), int(end)
+        return Segment.from_chromosome_coordinates(chromosome=chromosome.lower(), start=start, end=end)
+    chromosome, start, end = string.split("\t")
+    start, end = int(start), int(end)
+    return Segment.from_chromosome_coordinates(chromosome=chromosome.lower(), start=start, end=end)
+

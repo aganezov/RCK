@@ -18,7 +18,7 @@ sys.path.append(current_dir)
 import rck
 from rck.core.io import write_adjacencies_to_destination, read_adjacencies_from_source
 from rck.utils.adj.convert import *
-from rck.utils.adj.process import filter_nas_by_chromosomal_regions, get_shared_nas_parser, ORIGIN_IDS
+from rck.utils.adj.process import filter_adjacencies_by_chromosomal_regions, get_shared_nas_parser, ORIGIN_IDS
 
 
 def get_str_size_label(int_size):

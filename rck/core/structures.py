@@ -435,6 +435,14 @@ class Segment(object):
     def length_100(self):
         return int(self.length_1000 * 10)
 
+    @property
+    def start_coordinate(self):
+        return self.start_position.coordinate
+
+    @property
+    def end_coordinate(self):
+        return self.end_position.coordinate
+
 
 class AdjacencyType(Enum):
     REFERENCE = "R"

@@ -201,29 +201,42 @@ class Merger(object):
         return case1 or case2
 
 
-def filter_nas_by_chromosomal_regions(nas, include=None, exclude=None, include_both=True, exclude_both=False):
-    """
-    currently only full chromosomes are allowed/expected
-    """
+def filter_adjacencies_by_chromosomal_regions(nas, include=None, exclude=None, include_both=True, exclude_both=False):
     result = []
-    if include is not None:
-        include = {chromosome.lower() for chromosome in include}
-    if exclude is not None:
-        exclude = {chromosome.lower() for chromosome in exclude}
+    if include is None:
+        include = []
+    if exclude is None:
+        exclude = []
+    include_by_chr = defaultdict(list)
+    for segment in include:
+        include_by_chr[segment.chromosome.lower()].append(segment)
+    exclude_by_chr = defaultdict(list)
+    for segment in exclude:
+        exclude_by_chr[segment.chromosome.lower()].append(segment)
+    for chr in list(include_by_chr.keys()):
+        include_by_chr[chr] = sorted(include_by_chr[chr], key=lambda s: (s.start_coordinate, s.end_coordinate))
+    for chr in list(exclude_by_chr.keys()):
+        exclude_by_chr[chr] = sorted(exclude_by_chr[chr], key=lambda s: (s.start_coordinate, s.end_coordinate))
+    include_by_chr = dict(include_by_chr)
+    exclude_by_chr = dict(exclude_by_chr)
     for na in nas:
         retain = True
         chr1, chr2 = na.position1.chromosome, na.position2.chromosome
         chr1, chr2 = chr1.lower(), chr2.lower()
-        if include is not None and len(include) > 0:
-            chr1in = chr1 in include
-            chr2in = chr2 in include
+        include_segments_chr1 = include_by_chr.get(chr1, [])
+        include_segments_chr2 = include_by_chr.get(chr2, [])
+        if len(include_segments_chr1) != 0 or len(include_segments_chr2) != 0:
+            chr1in = coordinate_in_any_segment(coordinate=na.position1.coordinate, segments=include_segments_chr1)
+            chr2in = coordinate_in_any_segment(coordinate=na.position2.coordinate, segments=include_segments_chr2)
             if include_both:
                 retain &= chr1in and chr2in
             else:
                 retain &= chr1in or chr2in
-        if exclude is not None and len(exclude) > 0:
-            chr1in = chr1 in exclude
-            chr2in = chr2 in exclude
+        exclude_segments_chr1 = exclude_by_chr.get(chr1, [])
+        exclude_segments_chr2 = exclude_by_chr.get(chr2, [])
+        if len(exclude_segments_chr1) != 0 or len(exclude_segments_chr2) != 0:
+            chr1in = coordinate_in_any_segment(coordinate=na.position1.coordinate, segments=exclude_segments_chr1)
+            chr2in = coordinate_in_any_segment(coordinate=na.position2.coordinate, segments=exclude_segments_chr2)
             if exclude_both:
                 retain &= not (chr1in and chr2in)
             else:
@@ -231,6 +244,13 @@ def filter_nas_by_chromosomal_regions(nas, include=None, exclude=None, include_b
         if retain:
             result.append(na)
     return result
+
+
+def coordinate_in_any_segment(coordinate, segments):
+    for segment in segments:
+        if segment.start_coordinate <= coordinate <= segment.end_coordinate:
+            return True
+    return False
 
 
 def get_shared_nas_parser():
@@ -246,7 +266,7 @@ def get_shared_nas_parser():
 
 def get_chromosome_strip_parser():
     chr_strip_parser = argparse.ArgumentParser(add_help=False)
-    chr_strip_parser = chr_strip_parser.add_argument("--no-strip-chr", action="store_false", dest="strip_chr")
+    chr_strip_parser.add_argument("--no-strip-chr", action="store_false", dest="strip_chr")
     return chr_strip_parser
 
 

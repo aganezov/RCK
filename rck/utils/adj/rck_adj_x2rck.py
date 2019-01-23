@@ -12,7 +12,7 @@ sys.path.append(current_dir)
 import rck
 from rck.core.io import get_logging_cli_parser, get_standard_logger_from_args
 from rck.utils.adj.convert import *
-from rck.utils.adj.process import filter_nas_by_chromosomal_regions, get_shared_nas_parser, processed_gundem2015_adjacencies, get_chromosome_strip_parser
+from rck.utils.adj.process import filter_adjacencies_by_chromosomal_regions, get_shared_nas_parser, processed_gundem2015_adjacencies, get_chromosome_strip_parser
 
 
 def main():
@@ -31,7 +31,8 @@ def main():
     lumpy_parser.add_argument("--id-suffix", dest="id_suffix", default="lumpy")
     lumpy_parser.add_argument("lumpy_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
-    longranger_parser = subparsers.add_parser("longranger", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert LongRanger VCF SV calls into RCK NAS format")
+    longranger_parser = subparsers.add_parser("longranger", parents=[shared_parser, cli_logging_parser, chr_strip_parser],
+                                              help="Convert LongRanger VCF SV calls into RCK NAS format")
     longranger_parser.add_argument("--id-suffix", dest="id_suffix", default="longranger")
     longranger_parser.add_argument("longranger_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
@@ -50,6 +51,9 @@ def main():
     grocsv = subparsers.add_parser("grocsv", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert GROCSVS VCF SV calls into RCK NAS format")
     grocsv.add_argument("--id-suffix", dest="id_suffix", default="grocsv")
     grocsv.add_argument("grocsv_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
+    grocsv.add_argument("--samples")
+    grocsv.add_argument("--samples-all-any", choices=["all", "any"], default="any")
+    grocsv.add_argument("--samples-only", action="store_true", dest="samples_only")
     ####
     delly = subparsers.add_parser("delly", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert Delly VCF SV calls into RCK NAS format")
     delly.add_argument("--id-suffix", dest="id_suffix", default="delly")
@@ -68,8 +72,9 @@ def main():
     remixt.add_argument("--no-remixt-na-correction", action="store_false", dest="remixt_correction")
     remixt.add_argument("remixt_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
-    gundem2015_parser = subparsers.add_parser("gundem2015", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert SV calls from Gundem et al (2015) (BRASS2???) "
-                                                                                                              "into RCK NAS format")
+    gundem2015_parser = subparsers.add_parser("gundem2015", parents=[shared_parser, cli_logging_parser, chr_strip_parser],
+                                              help="Convert SV calls from Gundem et al (2015) (BRASS2???) "
+                                                   "into RCK NAS format")
     gundem2015_parser.add_argument("--id-suffix", dest="id_suffix", default="gundem2015")
     gundem2015_parser.add_argument("gundem2015_file", type=argparse.FileType("rt"), default=sys.stdin)
     gundem2015_parser.add_argument("--i-separator", default="\t")
@@ -118,9 +123,11 @@ def main():
     elif args.command == "grocsv":
         logger.info("Starting converting adjacencies from GROCSVS records to that of RCK")
         logger.info("Reading GROCSVS VCF records from {file}".format(file=args.grocsv_vcf_file))
+        samples = args.samples.split(",") if args.samples is not None else args.samples
         grocsv_vcf_records = get_vcf_records_from_source(source=args.grocsv_vcf_file)
         logger.info("Converting GROCSVS VCF records to RCK adjacencies")
-        nas = get_nas_from_grocsv_vcf_records(grocsv_vcf_records=grocsv_vcf_records, setup=setup)
+        nas = get_nas_from_grocsv_vcf_records(grocsv_vcf_records=grocsv_vcf_records, setup=setup, samples=samples, sample_all_any=args.samples_all_any,
+                                              samples_only=args.samples_only)
     elif args.command == "delly":
         logger.info("Starting converting adjacencies from Delly records to that of RCK")
         if args.delly_force_stream:
@@ -138,7 +145,7 @@ def main():
         logger.info("Starting converting adjacencies from PBSV records to that of RCK")
         logger.info("Reading PBSV VCF records from {file}".format(file=args.pbsv_vcf_file))
         pbsv_vcf_records = get_vcf_records_from_source(source=args.pbsv_vcf_file)
-        logger.info("Converting PBSV VCF records to rCK adjacencies")
+        logger.info("Converting PBSV VCF records to RCK adjacencies")
         nas = get_nas_from_pbsv_vcf_records(pbsv_vcf_records=pbsv_vcf_records, setup=setup)
     elif args.command == "gundem2015":
         logger.info("Starting converting adjacencies from Gundem et al 2015 (BRASS2???) to that of RCK")
@@ -154,28 +161,30 @@ def main():
                                          remixt_na_correction=args.remixt_correction)
     logger.info("A total of {cnt} adjacencies were obtained.".format(cnt=len(nas)))
     logger.debug("Output extra fields were identified as {o_extra}".format(o_extra=",".join(extra)))
-    include_chrs = set()
-    exclude_chrs = set()
+    include_chrs_regions_strings = []
+    exclude_chrs_regions_strings = []
     if args.chrs_include is not None:
         for chrs_lists in args.chrs_include:
             for chrs_list in chrs_lists:
                 for chr_name in chrs_list.split(","):
-                    include_chrs.add(chr_name)
+                    include_chrs_regions_strings.append(chr_name)
     if args.chrs_include_file is not None:
-        for chr_name in get_chrs_list_from_source(source=args.chrs_include_file):
-            include_chrs.add(chr_name)
+        for chr_name in get_chrs_regions_string_lists_from_source(source=args.chrs_include_file):
+            include_chrs_regions_strings.append(chr_name)
     if args.chrs_exclude is not None:
         for chrs_lists in args.chrs_exclude:
             for chrs_list in chrs_lists:
                 for chr_name in chrs_list.split(","):
-                    exclude_chrs.add(chr_name)
+                    exclude_chrs_regions_strings.append(chr_name)
     if args.chrs_exclude_file is not None:
-        for chr_name in get_chrs_list_from_file(file_name=args.chrs_exclude_file):
-            exclude_chrs.add(chr_name)
-    logger.debug("Include chromosomes : {include_chromosomes}".format(include_chromosomes=",".join(include_chrs)))
-    logger.debug("Exclude chromosomes : {exclude_chromosomes}".format(exclude_chromosomes=",".join(exclude_chrs)))
+        for chr_name in get_chrs_regions_string_list_from_file(file_name=args.chrs_exclude_file):
+            exclude_chrs_regions_strings.append(chr_name)
+    include_regions = [parse_segment_chr_region(string) for string in include_chrs_regions_strings]
+    exclude_regions = [parse_segment_chr_region(string) for string in exclude_chrs_regions_strings]
+    logger.debug("Include chromosomes : {include_chromosomes}".format(include_chromosomes=",".join(map(str, include_regions))))
+    logger.debug("Exclude chromosomes : {exclude_chromosomes}".format(exclude_chromosomes=",".join(map(str, exclude_regions))))
     logger.info("Filtering adjacencies based on input/exclude chromosomes")
-    nas = filter_nas_by_chromosomal_regions(nas=nas, include=include_chrs, exclude=exclude_chrs)
+    nas = filter_adjacencies_by_chromosomal_regions(nas=nas, include=include_regions, exclude=exclude_regions)
     logger.info("A total of {cnt} adjacencies were retained after filtering".format(cnt=len(nas)))
     logger.info("Writing RCK adjacencies to {file}".format(file=args.rck_adj_file))
     write_adjacencies_to_destination(destination=args.rck_adj_file, adjacencies=nas, extra=extra)
