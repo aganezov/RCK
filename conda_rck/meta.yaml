@@ -1,0 +1,71 @@
+{% set name = "RCK" %}
+{% set version = "0.0.1a0" %}
+
+package:
+  name: "{{ name|lower }}"
+  version: "{{ version }}"
+
+source:
+  url: https://test-files.pythonhosted.org/packages/46/eb/183e73266ab5900f2f6747c98cb347deacffc2eb49b3ed7f3dcd57dc9a29/RCK-{{ version }}.tar.gz
+  sha256: cb54654e1d336e7711a6b98a632e223b3e95c32d4566dd3846c5f92aa16d78f5
+
+build:
+  number: 0
+  script: "{{ PYTHON }} -m pip install . --no-deps --ignore-installed -vvv "
+
+requirements:
+  host:
+    - networkx >=2
+    - scipy
+    - pyvcf
+    - pysam
+    - sortedcontainers
+    - pandas
+    - gurobi
+    - pip
+    - python >=3.6
+  run:
+    - networkx >=2
+    - scipy
+    - pyvcf
+    - pysam
+    - sortedcontainers
+    - pandas
+    - gurobi
+    - pip
+    - python >=3.6
+
+test:
+  imports:
+    - rck
+    - rck.core
+    - rck.utils
+    - rck.utils.adj
+    - rck.utils.scn
+  commands:
+    - rck --help  # [not win]
+    - rck-adj-x2rck --help  # [not win]
+    - rck-adj-x2rck sniffles --help # [not win]
+    - rck-adj-x2rck lumpy --help  # [not win]
+    - rck-adj-x2rck longranger --help # [not win]
+    - rck-adj-x2rck naibr --help  # [not win]
+    - rck-adj-x2rck manta --help  # [not win]
+    - rck-adj-x2rck grocsv --help # [not win]
+    - rck-adj-x2rck delly --help  # [not win]
+    - rck-adj-x2rck pbsv --help # [not win]
+    - rck-adj-x2rck remixt --help # [not win]
+    - rck-adj-process --help # [not win]
+    - rck-adj-process cat --help  # [not win]
+    - rck-adj-process reciprocal --help # [not win]
+    - rck-scnt-x2rck --help # [not win]
+    - rck-scnt-x2rck titan --help # [not win]
+    - rck-scnt-x2rck battenberg --help  # [not win]
+    - rck-scnt-x2rck hatchet --help # [not win]
+    - eck-scnt-x2rck remixt --help  # [not win]
+
+about:
+  home: https://github.com/aganezov/rck
+
+extra:
+  recipe-maintainers:
+    - aganezov

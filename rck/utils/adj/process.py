@@ -201,8 +201,7 @@ class Merger(object):
         return case1 or case2
 
 
-def filter_adjacencies_by_chromosomal_regions(nas, include=None, exclude=None, include_both=True, exclude_both=False):
-    result = []
+def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude=None, include_both=True, exclude_both=False):
     if include is None:
         include = []
     if exclude is None:
@@ -219,15 +218,15 @@ def filter_adjacencies_by_chromosomal_regions(nas, include=None, exclude=None, i
         exclude_by_chr[chr] = sorted(exclude_by_chr[chr], key=lambda s: (s.start_coordinate, s.end_coordinate))
     include_by_chr = dict(include_by_chr)
     exclude_by_chr = dict(exclude_by_chr)
-    for na in nas:
+    for adj in adjacencies:
         retain = True
-        chr1, chr2 = na.position1.chromosome, na.position2.chromosome
+        chr1, chr2 = adj.position1.chromosome, adj.position2.chromosome
         chr1, chr2 = chr1.lower(), chr2.lower()
         include_segments_chr1 = include_by_chr.get(chr1, [])
         include_segments_chr2 = include_by_chr.get(chr2, [])
         if len(include_segments_chr1) != 0 or len(include_segments_chr2) != 0:
-            chr1in = coordinate_in_any_segment(coordinate=na.position1.coordinate, segments=include_segments_chr1)
-            chr2in = coordinate_in_any_segment(coordinate=na.position2.coordinate, segments=include_segments_chr2)
+            chr1in = coordinate_in_any_segment(coordinate=adj.position1.coordinate, segments=include_segments_chr1)
+            chr2in = coordinate_in_any_segment(coordinate=adj.position2.coordinate, segments=include_segments_chr2)
             if include_both:
                 retain &= chr1in and chr2in
             else:
@@ -235,15 +234,35 @@ def filter_adjacencies_by_chromosomal_regions(nas, include=None, exclude=None, i
         exclude_segments_chr1 = exclude_by_chr.get(chr1, [])
         exclude_segments_chr2 = exclude_by_chr.get(chr2, [])
         if len(exclude_segments_chr1) != 0 or len(exclude_segments_chr2) != 0:
-            chr1in = coordinate_in_any_segment(coordinate=na.position1.coordinate, segments=exclude_segments_chr1)
-            chr2in = coordinate_in_any_segment(coordinate=na.position2.coordinate, segments=exclude_segments_chr2)
+            chr1in = coordinate_in_any_segment(coordinate=adj.position1.coordinate, segments=exclude_segments_chr1)
+            chr2in = coordinate_in_any_segment(coordinate=adj.position2.coordinate, segments=exclude_segments_chr2)
             if exclude_both:
                 retain &= not (chr1in and chr2in)
             else:
                 retain &= not (chr1in or chr2in)
         if retain:
-            result.append(na)
-    return result
+            yield adj
+
+
+def filter_adjacencies_by_size(adjacencies, min_size=0, max_size=1000000000, size_extra_field=None, size_extra_seq_field=None,
+                               allow_inter_chr=True):
+    for adj in adjacencies:
+        adj_size = None
+        try:
+            adj_size = int(adj.extra[size_extra_field])
+        except (KeyError, ValueError):
+            pass
+        if adj_size is None:
+            try:
+                adj_size = len(adj.extra[size_extra_seq_field])
+            except (KeyError, ValueError):
+                pass
+        if adj_size is None:
+            adj_size = adj.distance_non_hap
+        if adj_size == -1 and allow_inter_chr:
+            yield adj
+        elif min_size <= adj_size <= max_size:
+            yield adj
 
 
 def coordinate_in_any_segment(coordinate, segments):
@@ -259,8 +278,10 @@ def get_shared_nas_parser():
     shared_parser.add_argument("--o-extra-fields", default="all")
     shared_parser.add_argument("--chrs-include", action="append", nargs=1)
     shared_parser.add_argument("--chrs-include-file", type=argparse.FileType("rt"))
+    shared_parser.add_argument("--chrs-include-no-both", action="store_false", dest="include_both")
     shared_parser.add_argument("--chrs-exclude", action="append", nargs=1)
     shared_parser.add_argument("--chrs-exclude-file", type=argparse.FileType("rt"))
+    shared_parser.add_argument("--chrs-exclude-both", action="store_true", dest="exclude_both")
     return shared_parser
 
 
@@ -311,38 +332,10 @@ def position_in_region(position, region):
     return region[0] <= position.coordinate <= region[1]
 
 
-def filter_adjacencies(adjacencies, keep_regions=None, remove_regions=None,
-                       keep_extra_field=None, keep_extra_field_missing_strategy=None,
-                       remove_extra_field=None, remove_extra_field_missing_strategy=None,
-                       merged_field=None, merged_distinct_origin_cnt=1, merged_origin_regex_string=None, merged_distinct_origin_min_cnt_missing_strategy=None):
-    if merged_origin_regex_string is not None:
-        merged_origin_regex = re.compile(merged_origin_regex_string)
-    else:
-        merged_origin_regex = re.compile(".*")
+def filter_adjacencies_by_extra(adjacencies,
+                                keep_extra_field=None, keep_extra_field_missing_strategy=None,
+                                remove_extra_field=None, remove_extra_field_missing_strategy=None):
     for adj in adjacencies:
-        pos1, pos2 = adj.position1, adj.position2
-        chr1, chr2 = pos1.chromosome, pos2.chromosome
-
-        if keep_regions is not None and len(keep_regions) > 0:
-            if chr1 not in keep_regions or chr2 not in keep_regions:
-                continue
-            pos1_candidate_regions = keep_regions[chr1]
-            pos2_candidate_regions = keep_regions[chr2]
-            pos1_inside = any(position_in_region(position=pos1, region=region) for region in pos1_candidate_regions)
-            pos2_inside = any(position_in_region(position=pos2, region=region) for region in pos2_candidate_regions)
-            keep = pos1_inside and pos2_inside
-            if not keep:
-                continue
-
-        if remove_regions is not None and len(remove_regions) > 0:
-            if chr1 in remove_regions or chr2 in remove_regions:
-                pos1_candidate_regions, pos2_candidate_regions = remove_regions[chr1], remove_regions[chr2]
-                pos1_inside = any(position_in_region(position=pos1, region=region) for region in pos1_candidate_regions)
-                pos2_inside = any(position_in_region(position=pos2, region=region) for region in pos2_candidate_regions)
-                keep = not (pos1_inside or pos2_inside)
-                if not keep:
-                    continue
-
         if keep_extra_field is not None and len(keep_extra_field) > 0:
             keep = False
             for field, regex_list in keep_extra_field.items():
@@ -367,20 +360,8 @@ def filter_adjacencies(adjacencies, keep_regions=None, remove_regions=None,
                             break
                     elif remove_extra_field_missing_strategy == REMOVE:
                         keep = False
+                        break
             if not keep:
-                continue
-        if merged_distinct_origin_cnt > 1:
-            if merged_field in adj.extra:
-                data = adj.extra[merged_field].split(",")
-                values = set()
-                for string_value in data:
-                    match = merged_origin_regex.match(string_value)
-                    if match is None:
-                        continue
-                    values.add(match.group("source"))
-                if len(values) < merged_distinct_origin_cnt:
-                    continue
-            elif merged_distinct_origin_min_cnt_missing_strategy == REMOVE:
                 continue
         yield adj
 

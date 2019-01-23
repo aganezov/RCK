@@ -184,7 +184,7 @@ def main():
     logger.debug("Include chromosomes : {include_chromosomes}".format(include_chromosomes=",".join(map(str, include_regions))))
     logger.debug("Exclude chromosomes : {exclude_chromosomes}".format(exclude_chromosomes=",".join(map(str, exclude_regions))))
     logger.info("Filtering adjacencies based on input/exclude chromosomes")
-    nas = filter_adjacencies_by_chromosomal_regions(nas=nas, include=include_regions, exclude=exclude_regions)
+    nas = filter_adjacencies_by_chromosomal_regions(adjacencies=nas, include=include_regions, exclude=exclude_regions, include_both=args.include_both, exclude_both=args.exclude_both)
     logger.info("A total of {cnt} adjacencies were retained after filtering".format(cnt=len(nas)))
     logger.info("Writing RCK adjacencies to {file}".format(file=args.rck_adj_file))
     write_adjacencies_to_destination(destination=args.rck_adj_file, adjacencies=nas, extra=extra)
