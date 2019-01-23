@@ -27,10 +27,10 @@ before_install:
 
 install:
   - hash -r
-  - source activate test-environment
   - export PATH="$HOME/miniconda/bin:$PATH"
   - export PATH="$HOME/miniconda/envs/test-environment/bin:$PATH"
   - echo $PATH
+  - source activate test-environment
   - ls -l $HOME/miniconda/envs/test-environment/bin
   - travis_wait 30 pip install -e .
   - conda install -c gurobi gurobi
