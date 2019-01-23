@@ -28,7 +28,7 @@ before_install:
 install:
   - hash -r
   - export PATH="$HOME/miniconda/bin:$PATH"
-  - export PATH="$HOME/miniconda/envs/test-environment/bin:$PATH"
+#  - export PATH="$HOME/miniconda/envs/test-environment/bin:$PATH"
   - echo $PATH
   - source activate test-environment
   - ls -l $HOME/miniconda/envs/test-environment/bin
