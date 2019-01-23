@@ -4,9 +4,6 @@ import os
 import sys
 from collections import defaultdict
 
-from utils.adj.convert import get_chrs_regions_string_lists_from_source, get_chrs_regions_string_list_from_file, parse_segment_chr_region
-from utils.adj.process import filter_adjacencies_by_chromosomal_regions, filter_adjacencies_by_size
-
 current_file_level = 3
 current_dir = os.path.dirname(os.path.realpath(__file__))
 for _ in range(current_file_level):
@@ -16,9 +13,12 @@ sys.path.append(current_dir)
 import rck
 from rck.core.io import read_adjacencies_from_source, write_adjacencies_to_destination, EXTERNAL_NA_ID, stream_adjacencies_from_source, get_logging_cli_parser, \
     get_standard_logger_from_args
-from rck.utils.adj.process import get_shared_nas_parser, Merger, get_chromosome_regions_dict, iter_over_string_entries_from_source, get_extra_field_regexes, \
+from rck.utils.adj.process import get_shared_nas_parser, Merger, iter_over_string_entries_from_source, get_extra_field_regexes, \
     filter_adjacencies_by_extra, \
     KEEP, REMOVE, refined_adjacencies_reciprocal
+from rck.utils.adj.convert import get_chrs_regions_string_lists_from_source, get_chrs_regions_string_list_from_file, parse_segment_chr_region
+from rck.utils.adj.process import filter_adjacencies_by_chromosomal_regions, filter_adjacencies_by_size
+
 
 
 def main():

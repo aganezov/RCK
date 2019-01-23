@@ -1,13 +1,13 @@
 {% set name = "RCK" %}
-{% set version = "0.0.1a0" %}
+{% set version = "0.0.1a2" %}
 
 package:
   name: "{{ name|lower }}"
   version: "{{ version }}"
 
 source:
-  url: https://test-files.pythonhosted.org/packages/46/eb/183e73266ab5900f2f6747c98cb347deacffc2eb49b3ed7f3dcd57dc9a29/RCK-{{ version }}.tar.gz
-  sha256: cb54654e1d336e7711a6b98a632e223b3e95c32d4566dd3846c5f92aa16d78f5
+  url: https://test-files.pythonhosted.org/packages/b3/5d/c6d75c98d2d583115f20cd5561201a7cef3f0d0018b3b94dd0dfb73366d9/RCK-0.0.1a2.tar.gz
+  sha256: 3589735bc653b9ebb022c2dd12fe43b2d1289ec4b6217864b9c540e00b38b264
 
 build:
   number: 0
@@ -57,11 +57,12 @@ test:
     - rck-adj-process --help # [not win]
     - rck-adj-process cat --help  # [not win]
     - rck-adj-process reciprocal --help # [not win]
+    - rck-adj-process filter --help # [not win]
     - rck-scnt-x2rck --help # [not win]
     - rck-scnt-x2rck titan --help # [not win]
     - rck-scnt-x2rck battenberg --help  # [not win]
     - rck-scnt-x2rck hatchet --help # [not win]
-    - eck-scnt-x2rck remixt --help  # [not win]
+    - rck-scnt-x2rck remixt --help  # [not win]
 
 about:
   home: https://github.com/aganezov/rck
