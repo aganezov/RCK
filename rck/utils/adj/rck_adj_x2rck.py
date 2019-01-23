@@ -112,7 +112,7 @@ def main():
         logger.info("Starting converting adjacencies from Manta records to that of RCK")
         logger.info("Reading Manta VCF records from {file}".format(file=args.manta_vcf_file))
         manta_vcf_records = get_vcf_records_from_source(source=args.manta_vcf_file)
-        logger.info("Converting Manta VCF records to TCK adjacencies")
+        logger.info("Converting Manta VCF records to RCK adjacencies")
         nas = get_nas_from_manta_vcf_records(manta_vcf_records=manta_vcf_records, setup=setup)
     elif args.command == "sniffles":
         logger.info("Starting converting adjacencies from Sinffles records to that of RCK")
@@ -185,6 +185,7 @@ def main():
     logger.debug("Exclude chromosomes : {exclude_chromosomes}".format(exclude_chromosomes=",".join(map(str, exclude_regions))))
     logger.info("Filtering adjacencies based on input/exclude chromosomes")
     nas = filter_adjacencies_by_chromosomal_regions(adjacencies=nas, include=include_regions, exclude=exclude_regions, include_both=args.include_both, exclude_both=args.exclude_both)
+    nas = list(nas)
     logger.info("A total of {cnt} adjacencies were retained after filtering".format(cnt=len(nas)))
     logger.info("Writing RCK adjacencies to {file}".format(file=args.rck_adj_file))
     write_adjacencies_to_destination(destination=args.rck_adj_file, adjacencies=nas, extra=extra)
