@@ -1,0 +1,57 @@
+language: python
+python:
+  - 3.6
+  - 3.7
+
+os:
+  - linux
+dist: xenial
+sudo: required
+
+matrix:
+  include:
+        - os: osx
+          osx_image: xcode10.1
+          language: generic
+          env:
+          - PYTHON=3.6
+        - os: osx
+          osx_image: xcode10.1
+          language: generic
+          env:
+          - PYTHON=3.7
+
+
+before_install:
+  - sudo chmod +x .travis/install.sh && sudo chown $USER .travis/install.sh && /bin/bash .travis/install.sh
+
+install:
+  - hash -r
+  - export PATH="$HOME/miniconda/envs/test-environment/bin:$PATH"
+  - echo $PATH
+  - ls -l $HOME/miniconda/bin
+  - travis_wait 30 pip install -e .
+  - conda install -c gurobi gurobi
+
+script:
+  - python -c "import gurobi"
+  - rck --help
+  - rck-adj-x2rck --help
+  - rck-adj-x2rck sniffles --help
+  - rck-adj-x2rck lumpy --help
+  - rck-adj-x2rck longranger --help
+  - rck-adj-x2rck naibr --help
+  - rck-adj-x2rck manta --help
+  - rck-adj-x2rck grocsv --help
+  - rck-adj-x2rck delly --help
+  - rck-adj-x2rck pbsv --help
+  - rck-adj-x2rck remixt --help
+  - rck-adj-process --help
+  - rck-adj-process cat --help
+  - rck-adj-process reciprocal --help
+  - rck-adj-process filter --help
+  - rck-scnt-x2rck --help
+  - rck-scnt-x2rck titan --help
+  - rck-scnt-x2rck battenberg --help
+  - rck-scnt-x2rck hatchet --help
+  - rck-scnt-x2rck remixt --help
