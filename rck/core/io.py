@@ -610,7 +610,8 @@ def write_adjacencies_to_vcf_sniffles_file(file_name, adjacencies, extra="all", 
         write_adjacencies_to_vcf_sniffles_destination(destination=destination, adjacencies=adjacencies, extra=extra, extra_fill=extra_fill, sort_adjacencies=sort_adjacencies)
 
 
-def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extra="all", extra_fill=".", sort_adjacencies=True):
+def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extra="all", extra_fill=".", sort_adjacencies=True,
+                                                  dummy_clone="dummy_clone", clone_suffix=""):
     if sort_adjacencies:
         adjacencies = sorted(adjacencies, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
     adjacencies = list(adjacencies)
@@ -661,7 +662,8 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
                     else:
                         clone_ids &= set(value.keys())
     if clone_ids is None:
-        clone_ids = ["dummy_clone"]
+        clone_ids = [dummy_clone]
+    clone_names = [clone_id + clone_suffix for clone_id in clone_ids]
     clone_ids = sorted(clone_ids)
 
     for extra_entry_id, extra_entry_number in extra_info_fields_and_numbers.items():
@@ -670,11 +672,11 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
         print("##INFO=<ID={entry_id},Number={entry_number},Type=String,Description=\"\">".format(entry_id=extra_entry_id, entry_number=extra_entry_number), file=destination)
     for extra_entry_id, extra_entry_number in extra_format_fields_and_numbers.items():
         print("##FORMAT=<ID={entry_id},Number={entry_number},Type=String,Description=\"\">".format(entry_id=extra_entry_id, entry_number=extra_entry_number), file=destination)
-    for clone_id in clone_ids:
+    for clone_id in clone_names:
         print("##SAMPLE=<ID={sample_id}>".format(sample_id=clone_id), file=destination)
 
     header = ["#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT"]
-    for clone_id in clone_ids:
+    for clone_id in clone_names:
         header.append(clone_id)
     print("\t".join(header), file=destination)
 

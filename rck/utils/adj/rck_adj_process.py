@@ -20,7 +20,6 @@ from rck.utils.adj.convert import get_chrs_regions_string_lists_from_source, get
 from rck.utils.adj.process import filter_adjacencies_by_chromosomal_regions, filter_adjacencies_by_size
 
 
-
 def main():
     parser = argparse.ArgumentParser(prog="RCK-UTILS-ADJ-process")
     parser.add_argument('--version', action='version', version=rck.version)
@@ -45,6 +44,7 @@ def main():
     filter_parser.add_argument("--max-size", type=int, default=1000000000)
     filter_parser.add_argument("--no-allow-inter-chr", action="store_false", dest="allow_inter_chr")
     filter_parser.add_argument("--size-extra-field")
+    filter_parser.add_argument("--size-extra-field-no-abs", action="store_false", dest="size_extra_field_abs")
     filter_parser.add_argument("--size-extra-seq-field")
     # filter_parser.add_argument("--merged-field", default="origin_ids")
     # filter_parser.add_argument("--merged-distinct-origin-min-cnt", type=int, default=-1)
@@ -170,8 +170,9 @@ def main():
         adjacencies = filter_adjacencies_by_extra(adjacencies=adjacencies,
                                                   keep_extra_field=keep_extra_field, keep_extra_field_missing_strategy=args.keep_extra_field_missing_strategy,
                                                   remove_extra_field=remove_extra_field, remove_extra_field_missing_strategy=args.remove_extra_field_missing_strategy)
-        adjacencies = filter_adjacencies_by_size(adjacencies=adjacencies, min_size=args.min_size, max_size=args.max_size, size_extra_field=args.min_size_extra,
-                                                 size_extra_seq_field=args.size_extra_seq_field, allow_inter_chr=args.allow_inter_chr)
+        adjacencies = filter_adjacencies_by_size(adjacencies=adjacencies, min_size=args.min_size, max_size=args.max_size, size_extra_field=args.size_extra_field,
+                                                 size_extra_seq_field=args.size_extra_seq_field, allow_inter_chr=args.allow_inter_chr,
+                                                 size_extra_field_abs=args.size_extra_field_abs)
         write_adjacencies_to_destination(destination=args.rck_adj_file, adjacencies=adjacencies, sort_adjacencies=False, extra=extra)
         exit(0)
     elif args.command == "reciprocal":

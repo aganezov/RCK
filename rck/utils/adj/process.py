@@ -231,6 +231,10 @@ def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude
                 retain &= chr1in and chr2in
             else:
                 retain &= chr1in or chr2in
+        elif len(include_by_chr) > 0:
+            retain = False
+        if not retain:
+            continue
         exclude_segments_chr1 = exclude_by_chr.get(chr1, [])
         exclude_segments_chr2 = exclude_by_chr.get(chr2, [])
         if len(exclude_segments_chr1) != 0 or len(exclude_segments_chr2) != 0:
@@ -245,11 +249,13 @@ def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude
 
 
 def filter_adjacencies_by_size(adjacencies, min_size=0, max_size=1000000000, size_extra_field=None, size_extra_seq_field=None,
-                               allow_inter_chr=True):
+                               allow_inter_chr=True, size_extra_field_abs=True):
     for adj in adjacencies:
         adj_size = None
         try:
             adj_size = int(adj.extra[size_extra_field])
+            if size_extra_field_abs:
+                adj_size = abs(adj_size)
         except (KeyError, ValueError):
             pass
         if adj_size is None:

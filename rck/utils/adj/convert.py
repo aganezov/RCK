@@ -450,20 +450,10 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
                 raise ValueError("Unknown strands {missing STRANDS entry}")
         strand1 = Strand.from_pm_string(string=strands[0])
         strand2 = Strand.from_pm_string(string=strands[1])
-        svlen = record.INFO.get("SVLEN", coord2 - coord1)
-        if svlen is None:
-            svlen = coord2 - coord1
-        else:
-            svlen = int(svlen)
         if setup.get(STRIP_CHR, True):
             chr1, chr2 = strip_chr(chr_string=chr1), strip_chr(chr_string=chr2)
-        if svlen < 0:
-            svlen = -1
         extra.update({
             EXTERNAL_NA_ID: record_id,
-            SVLEN: svlen,
-            SUPPORT_READ_NAMES: record.INFO.get("RNAMES", ""),
-            SVTYPE: svtype
         })
         extra = clear_duplicated_entries_extra(extra=extra)
         pos1 = Position(chromosome=chr1, coordinate=coord1, strand=strand1)
@@ -658,7 +648,7 @@ def generate_nas_from_delly_vcf_records(source, setup=None):
             raise Exception("Unknown SV type \"{svtype}\" for Delly VCF input".format(svtype=svtype))
 
 
-def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None):
+def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None):
     if setup is None:
         setup = {}
     result = defaultdict(list)
@@ -673,6 +663,18 @@ def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None):
         extra[SVTYPE] = svtype
         extra[EXTERNAL_NA_ID] = svid
         if svtype in ["DEL", "INS", "INV", "BND"]:
+            for vcf_sample in record.samples:
+                if sample is None or vcf_sample.sample == sample:
+                    support, total = 0, 0
+                    l, r = vcf_sample.gt_alleles
+                    if l == '1':
+                        support += vcf_sample.data.AD[0]
+                    if r == '1':
+                        support += vcf_sample.data.AD[1]
+                    total = vcf_sample.data.DP
+                    extra["re"] = support
+                    extra["rcnt"] = total
+                    break
             if svtype in ["DEL", "INS"]:
                 chr1 = str(record.CHROM)
                 coord1 = int(record.POS)
@@ -717,6 +719,8 @@ def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None):
             else:
                 assert len(record.INFO["MATEID"]) == 1
                 mate_vcf_id = record.INFO["MATEID"][0]
+                if mate_vcf_id not in records_by_ids:
+                    continue
                 mate_record = records_by_ids[mate_vcf_id]
                 extra.update(mate_record.INFO)
                 chr1 = str(record.CHROM)

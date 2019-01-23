@@ -28,6 +28,8 @@ def main():
     vcf_parser.add_argument("--output", "-o", type=argparse.FileType("wt"), default=sys.stdout)
     vcf_parser.add_argument("--o-extra-fields", default="all")
     vcf_parser.add_argument("--o-no-include-ref", action="store_false", dest="include_ref")
+    vcf_parser.add_argument("--clone-suffix", default="")
+    vcf_parser.add_argument("--dummy-clone", default="dummy_clone")
     ###
     args = parser.parse_args()
     logger = get_standard_logger_from_args(args=args, program_name="RCK-UTILS-NAS-rck2x")
@@ -46,7 +48,8 @@ def main():
     if args.command == "vcf-sniffles":
         logger.info("Converting RCK formatted adjacencies to the VCF (Sniffles) format")
         logger.info("Writing adjacencies to {file}".format(file=args.output))
-        write_adjacencies_to_vcf_sniffles_destination(destination=args.output, adjacencies=adjacencies, extra=extra)
+        write_adjacencies_to_vcf_sniffles_destination(destination=args.output, adjacencies=adjacencies, extra=extra,
+                                                      dummy_clone=args.dummy_clone, clone_suffix=args.clone_suffix)
 
 
 if __name__ == "__main__":
