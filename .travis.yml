@@ -29,9 +29,9 @@ install:
   - hash -r
   - export PATH="$HOME/miniconda/envs/test-environment/bin:$PATH"
   - echo $PATH
-  - ls -l $HOME/miniconda/bin
+  - ls -l $HOME/miniconda/envs/test-environment/bin
   - travis_wait 30 pip install -e .
-  - $HOME/miniconda/bin/conda install -c gurobi gurobi
+  - $HOME/miniconda/envs/test-environment/bin/conda install -c gurobi gurobi
 
 script:
   - python -c "import gurobi"
