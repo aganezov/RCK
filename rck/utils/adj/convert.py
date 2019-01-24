@@ -146,6 +146,7 @@ def update_nas_ids(nas_by_ids_defaultdict, setup):
                 if not na.extra[EXTERNAL_NA_ID].endswith(setup.get(ID_SUFFIX, "")):
                     na.extra[EXTERNAL_NA_ID] += "_{suffix}".format(suffix=setup.get(ID_SUFFIX, ""))
         for na in nas:
+            na.extra[EXTERNAL_NA_ID] = na.extra[EXTERNAL_NA_ID].replace(":", "_")
             result[na.extra[EXTERNAL_NA_ID]] = na
     return result
 
@@ -461,6 +462,65 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
         na = Adjacency(position1=pos1, position2=pos2, extra=extra)
         nas_by_ids[record_id].append(na)
         processed_ids.add(record_id)
+    nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
+    return nas_by_ids.values()
+
+
+def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacencies_by_ids_by_sample_name=None):
+    if setup is None:
+        setup = {}
+    if adjacencies_by_ids_by_sample_name is None:
+        adjacencies_by_ids_by_sample_name = {}
+    nas_by_ids = defaultdict(list)
+    records_by_ids = get_vcf_records_by_ids(vcf_records=survivor_vcf_records)
+    for record in records_by_ids.values():
+        extra = deepcopy(record.INFO)
+        svtype = record.INFO.get("SVTYPE", "")
+        record_id = str(record.ID)
+        chr1 = record.CHROM
+        coord1 = int(record.POS)
+        if "CHR2" in record.INFO:
+            chr2 = record.INFO["CHR2"]
+            coord2 = int(record.INFO["END"])
+        else:
+            record_breakend = record.ALT[0]
+            chr2 = record_breakend.chr
+            coord2 = record_breakend.pos
+        try:
+            strands = record.INFO["STRANDS"]
+            if isinstance(strands, (list, tuple)):
+                strands = strands[0]
+        except KeyError:
+            if svtype == "INS":
+                strands = "+-"
+            else:
+                raise ValueError("Unknown strands {missing STRANDS entry}")
+        strand1 = Strand.from_pm_string(string=strands[0])
+        strand2 = Strand.from_pm_string(string=strands[1])
+        if setup.get(STRIP_CHR, True):
+            chr1, chr2 = strip_chr(chr_string=chr1), strip_chr(chr_string=chr2)
+        extra.update({EXTERNAL_NA_ID: record_id})
+        extra = {key.lower(): value for key, value in extra.items()}
+        pos1 = Position(chromosome=chr1, coordinate=coord1, strand=strand1)
+        pos2 = Position(chromosome=chr2, coordinate=coord2, strand=strand2)
+        supporting_source_ids = set()
+        source_vector = []
+        for vcf_sample in record.samples:
+            source_vector.append(vcf_sample.sample)
+            source_id = vcf_sample.data.ID.split(",")[0]
+            if source_id == "NaN":
+                continue
+            supporting_source_ids.add(source_id)
+            if vcf_sample.sample in adjacencies_by_ids_by_sample_name:
+                sample_source_adjacencies = adjacencies_by_ids_by_sample_name[vcf_sample.sample]
+                source_adjacency = sample_source_adjacencies[source_id]
+                for key, value in source_adjacency.extra.items():
+                    if key not in extra:
+                        extra[key] = value
+        extra["supporting_source_ids"] = sorted(supporting_source_ids)
+        extra["sources"] = source_vector
+        na = Adjacency(position1=pos1, position2=pos2, extra=extra)
+        nas_by_ids[record_id].append(na)
     nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
     return nas_by_ids.values()
 
@@ -894,4 +954,3 @@ def parse_segment_chr_region(string):
     chromosome, start, end = string.split("\t")
     start, end = int(start), int(end)
     return Segment.from_chromosome_coordinates(chromosome=chromosome.lower(), start=start, end=end)
-

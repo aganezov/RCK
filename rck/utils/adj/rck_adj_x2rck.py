@@ -3,6 +3,8 @@ import argparse
 import sys
 import os
 
+from core.io import read_adjacencies_from_file, get_full_path
+
 current_file_level = 3
 current_dir = os.path.dirname(os.path.realpath(__file__))
 for _ in range(current_file_level):
@@ -82,6 +84,14 @@ def main():
     gundem2015_parser.add_argument("--min-sample-cnt", type=int, default=1)
     gundem2015_parser.add_argument("--no-flip-second-strand", action="store_false", dest="flip_second_strand")
     ####
+    survivor_parser = subparsers.add_parser("survivor", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Covert SURVIVOR SV merging results into RCK format")
+    survivor_parser.add_argument("--id-suffix", dest="id_suffix", default="survivor")
+    survivor_parser.add_argument("survivor_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
+    survivor_parser.add_argument("--samples")
+    survivor_parser.add_argument("--samples-sources")
+    survivor_parser.add_argument("--samples-separator", default="\t")
+    survivor_parser.add_argument("--samples-extra-separator", default=";")
+    ####
     args = parser.parse_args()
     setup = build_setup(args=args)
     logger = get_standard_logger_from_args(args=args, program_name="RCK-UTILS-ADJ-x2rck")
@@ -159,6 +169,28 @@ def main():
         clone_ids = args.clone_ids.split(",")
         nas = get_nas_from_remixt_source(source=args.remixt_file, setup=setup, separator=args.i_separator, clone_ids=clone_ids, skip_absent=args.skip_absent,
                                          remixt_na_correction=args.remixt_correction)
+    elif args.command == "survivor":
+        sample_names = args.samples.split(",") if args.samples is not None else []
+        sample_sources = args.samples_sources.split(",") if args.samples_sources is not None else []
+        if len(sample_names) != len(sample_sources):
+            logger.warning("Provided samples' length {sample_cnt} ({samples}) does not match that of samples source length {sample_sources_cnt} (sample_sources)"
+                           "".format(sample_cnt=len(sample_names), samples=",".join(sample_names), sample_sources_cnt=len(sample_sources),
+                                     sample_sources=",".join(sample_sources)))
+        logger.info("Starting converting adjacencies from SURVIVOR to that of RCK")
+        logger.info("Reading SURVIVOR records from {file}".format(file=args.survivor_vcf_file))
+        survivor_vcf_records = get_vcf_records_from_source(source=args.survivor_vcf_file)
+        logger.debug("Reading source-samples adjacencies (in RCK format)")
+        adjacencies_by_ids_by_sample_name = {}
+        for sample_name, sample_source in zip(sample_names, sample_sources):
+            try:
+                file_name = get_full_path(sample_source)
+                adjacencies = read_adjacencies_from_file(file_name=file_name, separator=args.samples_separator, extra_separator=args.samples_extra_separator)
+                adjacencies_by_ids = {adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased): adj for adj in adjacencies}
+                adjacencies_by_ids_by_sample_name[sample_name] = adjacencies_by_ids
+            except IOError:
+                logger.warning("Unable to reader source adjacency information from {source}".format(source=sample_source))
+        logger.info("Converting SURVIVOR VCF records from {file}".format(file=args.survivor_vcf_file))
+        nas = get_nas_from_survivor_vcf_records(survivor_vcf_records=survivor_vcf_records, setup=setup, adjacencies_by_ids_by_sample_name=adjacencies_by_ids_by_sample_name)
     logger.info("A total of {cnt} adjacencies were obtained.".format(cnt=len(nas)))
     logger.debug("Output extra fields were identified as {o_extra}".format(o_extra=",".join(extra)))
     include_chrs_regions_strings = []
