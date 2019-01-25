@@ -466,7 +466,7 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
     return nas_by_ids.values()
 
 
-def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacencies_by_ids_by_sample_name=None):
+def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacencies_by_ids_by_sample_name=None, suffix_sample_extra=False):
     if setup is None:
         setup = {}
     if adjacencies_by_ids_by_sample_name is None:
@@ -515,6 +515,8 @@ def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacenc
                 sample_source_adjacencies = adjacencies_by_ids_by_sample_name[vcf_sample.sample]
                 source_adjacency = sample_source_adjacencies[source_id]
                 for key, value in source_adjacency.extra.items():
+                    if suffix_sample_extra:
+                        key = str(vcf_sample.sample) + "_" + str(key)
                     if key not in extra:
                         extra[key] = value
         extra["supporting_source_ids"] = sorted(supporting_source_ids)
@@ -525,7 +527,95 @@ def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacenc
     return nas_by_ids.values()
 
 
-def get_nas_from_grocsv_vcf_records(grocsv_vcf_records, setup=None, samples=None, sample_all_any="any", samples_only=False):
+def get_nas_from_svaba_vcf_records(svaba_vcf_records, source_type="sv", setup=None, samples=None, samples_all_any="any", samples_only=False):
+    if setup is None:
+        setup = {}
+    nas_by_ids = defaultdict(list)
+    records_by_ids = get_vcf_records_by_ids(vcf_records=svaba_vcf_records)
+    processed_vcf_ids = set()
+    for record in records_by_ids.values():
+        extra = deepcopy(record.INFO)
+        if samples is not None:
+            present = {}
+            for format_sample in record.samples:
+                present[format_sample.sample] = "1" in format_sample.gt_alleles
+            refute = False
+            if samples_only:
+                refute = any([value for key, value in present.items() if key not in samples])
+            if samples_all_any == "any":
+                present = any([present.get(sample_name, True) for sample_name in samples])
+            else:
+                present = all([present.get(sample_name, True) for sample_name in samples])
+            present &= not refute
+            if not present:
+                continue
+        if source_type == "indel":
+            if 1 not in [len(record.REF), len(record.ALT)]:
+                raise ValueError("Something wierd with record {id}".format(id=record.ID))
+            if len(record.REF) > len(record.ALT):
+                svtype = "DEL"
+            else:
+                svtype = "INS"
+            chr1 = record.CHROM
+            if setup.get(STRIP_CHR, True):
+                chr1 = strip_chr(chr_string=chr1)
+            chr2 = chr1
+            coord1 = int(record.POS)
+            coord2 = coord1 + 1
+            if svtype == "DEL":
+                coord2 += int(record.INFO["SPAN"])
+            strand1 = Strand.FORWARD
+            strand2 = Strand.REVERSE
+            pos1 = Position(chromosome=chr1, coordinate=coord1, strand=strand1)
+            pos2 = Position(chromosome=chr2, coordinate=coord2, strand=strand2)
+            extra[EXTERNAL_NA_ID] = str(record.ID)
+            extra["svtype"] = svtype
+            na = Adjacency(position1=pos1, position2=pos2, extra=extra)
+            nas_by_ids[str(record.ID)].append(na)
+        elif source_type == "sv":
+            if record.ID in processed_vcf_ids:
+                continue
+            processed_vcf_ids.add(record.ID)
+            mate_vcf_record_id = record.INFO["MATEID"]
+            if mate_vcf_record_id not in records_by_ids:
+                continue
+            processed_vcf_ids.add(mate_vcf_record_id)
+            mate_vcf_record = records_by_ids[mate_vcf_record_id]
+            if samples is not None:
+                present = {}
+                for format_sample in mate_vcf_record.samples:
+                    present[format_sample.sample] = "1" in format_sample.gt_alleles
+                refute = False
+                if samples_only:
+                    refute = any([value for key, value in present.items() if key not in samples])
+                if samples_all_any == "any":
+                    present = any([present.get(sample_name, True) for sample_name in samples])
+                else:
+                    present = all([present.get(sample_name, True) for sample_name in samples])
+                present &= not refute
+                if not present:
+                    continue
+            chr1 = record.CHROM
+            chr2 = mate_vcf_record.CHROM
+            if setup.get(STRIP_CHR, True):
+                chr1, chr2 = strip_chr(chr_string=chr1), strip_chr(chr_string=chr2)
+            coord1 = int(record.POS)
+            coord2 = int(mate_vcf_record.POS)
+            strand1 = get_strand_from_alt_breakend(vcf_recrod=mate_vcf_record)
+            strand2 = get_strand_from_alt_breakend(vcf_recrod=record)
+            extra.update(mate_vcf_record.INFO)
+            pos1 = Position(chromosome=chr1, coordinate=coord1, strand=strand1)
+            pos2 = Position(chromosome=chr2, coordinate=coord2, strand=strand2)
+            extra[EXTERNAL_NA_ID] = str(record.ID).split(":")[0]
+            na = Adjacency(position1=pos1, position2=pos2, extra=extra)
+            nas_by_ids[extra[EXTERNAL_NA_ID]].append(na)
+        else:
+            raise ValueError("unknown SvABA input type {source_type}. Only 'sv' or 'indel' are allowed".format(source_type=source_type))
+    nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
+    return nas_by_ids.values()
+
+
+def get_nas_from_grocsv_vcf_records(grocsv_vcf_records, setup=None, samples=None, samples_all_any="any", samples_only=False):
     if setup is None:
         setup = {}
     nas_by_ids = defaultdict(list)
@@ -550,7 +640,7 @@ def get_nas_from_grocsv_vcf_records(grocsv_vcf_records, setup=None, samples=None
                 refute = False
                 if samples_only:
                     refute = any([value for key, value in present.items() if key not in samples])
-                if sample_all_any == "any":
+                if samples_all_any == "any":
                     present = any([present.get(sample_name, True) for sample_name in samples])
                 else:
                     present = all([present.get(sample_name, True) for sample_name in samples])
@@ -744,6 +834,8 @@ def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None):
                 strand1 = Strand.FORWARD
                 strand2 = Strand.REVERSE
                 coord2 = record.INFO["END"]
+                if svtype == "INS" and coord1 == coord2:
+                    coord2 += 1
                 if svtype == "INS":
                     assert len(record.INFO["SVLEN"]) == 1
                     extra[SVLEN] = int(record.INFO["SVLEN"][0])

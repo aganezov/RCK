@@ -91,6 +91,15 @@ def main():
     survivor_parser.add_argument("--samples-sources")
     survivor_parser.add_argument("--samples-separator", default="\t")
     survivor_parser.add_argument("--samples-extra-separator", default=";")
+    survivor_parser.add_argument("--samples-suffix-extra", action="store_true", dest="suffix_sample_extra")
+    ####
+    svaba_parser = subparsers.add_parser("svaba", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert SvABA SV calls into RCK format")
+    svaba_parser.add_argument("--id-suffix", dest="id_suffix", default="svaba")
+    svaba_parser.add_argument("svaba_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
+    svaba_parser.add_argument("--i-type", choices=["indel", "sv"], default="sv")
+    svaba_parser.add_argument("--samples")
+    svaba_parser.add_argument("--samples-all-any", choices=["all", "any"], default="any")
+    svaba_parser.add_argument("--samples-only", action="store_true", dest="samples_only")
     ####
     args = parser.parse_args()
     setup = build_setup(args=args)
@@ -136,7 +145,7 @@ def main():
         samples = args.samples.split(",") if args.samples is not None else args.samples
         grocsv_vcf_records = get_vcf_records_from_source(source=args.grocsv_vcf_file)
         logger.info("Converting GROCSVS VCF records to RCK adjacencies")
-        nas = get_nas_from_grocsv_vcf_records(grocsv_vcf_records=grocsv_vcf_records, setup=setup, samples=samples, sample_all_any=args.samples_all_any,
+        nas = get_nas_from_grocsv_vcf_records(grocsv_vcf_records=grocsv_vcf_records, setup=setup, samples=samples, samples_all_any=args.samples_all_any,
                                               samples_only=args.samples_only)
     elif args.command == "delly":
         logger.info("Starting converting adjacencies from Delly records to that of RCK")
@@ -190,7 +199,16 @@ def main():
             except IOError:
                 logger.warning("Unable to reader source adjacency information from {source}".format(source=sample_source))
         logger.info("Converting SURVIVOR VCF records from {file}".format(file=args.survivor_vcf_file))
-        nas = get_nas_from_survivor_vcf_records(survivor_vcf_records=survivor_vcf_records, setup=setup, adjacencies_by_ids_by_sample_name=adjacencies_by_ids_by_sample_name)
+        nas = get_nas_from_survivor_vcf_records(survivor_vcf_records=survivor_vcf_records, setup=setup, adjacencies_by_ids_by_sample_name=adjacencies_by_ids_by_sample_name,
+                                                suffix_sample_extra=args.suffix_sample_extra)
+    elif args.command == "svaba":
+        logger.info("Starting converting adjacencies from SvABA to RCK")
+        logger.info("Reading SvABA VCF records from {file}".format(file=args.svaba_vcf_file))
+        svaba_vcf_records = get_vcf_records_from_source(source=args.svaba_vcf_file)
+        logger.info("Converting SvABA VCF records to RCK adjacencies")
+        samples = args.samples.split(",") if args.samples is not None else args.samples
+        nas = get_nas_from_svaba_vcf_records(svaba_vcf_records=svaba_vcf_records, source_type=args.i_type, setup=setup, samples=samples, samples_all_any=args.samples_all_any,
+                                             samples_only=args.samples_only)
     logger.info("A total of {cnt} adjacencies were obtained.".format(cnt=len(nas)))
     logger.debug("Output extra fields were identified as {o_extra}".format(o_extra=",".join(extra)))
     include_chrs_regions_strings = []
