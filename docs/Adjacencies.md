@@ -35,7 +35,7 @@ RCK works with adjacencies in the following (T/C)SV (Tab/Comma Separated Values)
 ````
 aid	chr1	coord1	strand1	chr2	coord2	strand2	extra
 ````
-where very entry thus describes an adjacency `{(chr1, coord1, strand1), (chr2, coord2, strand2)}` with an id of `aid`.
+where every entry thus describes an adjacency `{(chr1, coord1, strand1), (chr2, coord2, strand2)}` with an id of `aid`.
 The `extra` field is designed to store `key=value` pairs of additional information about adjacencies, with entries being separated by `;`.
 
 There are several special extra fields, that RCK relies upon, when working:
