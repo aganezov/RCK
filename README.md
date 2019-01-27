@@ -7,7 +7,7 @@ Reconstruction of clone- and haplotype-specific Cancer Karyotypes
 
 ---
 
-#### **NOTE**: this repository contains only the initial version of RCK a the time of its publication.
+#### **NOTE**: this repository contains only the initial version of RCK at the time of its publication.
 Further development, bug fixing, new releases, etc. of RCK is conducted a the https://github.com/aganezov/RCK repository.
 
 ---
