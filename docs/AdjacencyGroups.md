@@ -17,6 +17,7 @@ RCK works with adjacencies groups in the following (T/C)SV (Tab/Comma Separated 
 gid	aids	extra
 ```
 where every entry describes a subset of the adjacencies, that are part of the RCK input, with the group id of `gid`, and adjacencies ids in the group listed in a comma-separated fashion in the `aids` column.
+Comma-separated values in the `aids` column must match entries in the `aid` column in the RCK input adjacencies file.
 The extra field is designed to store `key=value` pairs of additional information about each adjacency groups, with entries being separated by `;`.
 
 There are several special extra fields, that RCK relies upon, when working:
