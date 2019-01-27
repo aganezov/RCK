@@ -121,6 +121,8 @@ def get_vcf_records_from_file(vcf_file_name):
 def get_vcf_records_from_source(source):
     result = []
     vcf_reader = vcf.Reader(source)
+    if "RNAMES" in vcf_reader.infos:
+        vcf_reader.infos["RNAMES"] = vcf_reader.infos["RNAMES"]._replace(num='.')
     for record in vcf_reader:
         result.append(record)
     return result
