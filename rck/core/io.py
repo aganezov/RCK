@@ -289,7 +289,12 @@ def parse_segment_extra(extra, extra_separator=";"):
     result = {}
     extra_entries = extra.split(extra_separator)
     for entry in extra_entries:
-        key, value = entry.split("=")
+        data = entry.split("=")
+        if len(data) == 1:
+            if len(data[0]) > 0:
+                result[data[0]] = True
+            continue
+        key, value = data
         if key == COPY_NUMBER:
             value = parse_segment_extra_cn_string(segment_cn_string=value)
         elif key == COPY_NUMBER_BOUNDARIES:
