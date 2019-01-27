@@ -5,6 +5,13 @@ Reconstruction of clone- and haplotype-specific Cancer Karyotypes
 [![Build Status](https://travis-ci.com/aganezov/RCK.svg?token=yNaqdjAcHsstx5v8GMKj&branch=master)](https://travis-ci.com/aganezov/RCK)
 
 
+---
+
+#### **NOTE**: this repository contains only the initial version of RCK a the time of its publication.
+Further development, bug fixing, new releases, etc. of RCK is conducted a the https://github.com/aganezov/RCK repository.
+
+---
+
 **RCK** - is a method for **R**econstruction of clone- and haplotype-specific **C**ancer **K**aryotypes from tumor mixtures, distributed both as a standalone software package and as a Python library  under the MIT licence.
 
 RCK has been initially designed and developed by Sergey Aganezov in the group of prof. Ben Raphael at Princeton University ([group site](http://compbio.cs.brown.edu/)).
