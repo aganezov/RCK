@@ -1,5 +1,5 @@
-Reconstruction of clone- and haplotype-specific Cancer Karyotypes
-==
+# RCK <br/> <sub>Reconstruction of clone- and haplotype-specific Cancer Karyotypes</sub>
+
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/hyperium/hyper/master/LICENSE)
 [![Python 3.7](https://img.shields.io/badge/python-3.7-blue.svg)](https://www.python.org/downloads/)
 [![Build Status](https://travis-ci.com/aganezov/RCK.svg?token=yNaqdjAcHsstx5v8GMKj&branch=master)](https://travis-ci.com/aganezov/RCK)
