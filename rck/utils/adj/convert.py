@@ -636,7 +636,7 @@ def get_nas_from_grocsv_vcf_records(grocsv_vcf_records, setup=None, samples=None
             if samples is not None:
                 present = {}
                 for format_sample in record.samples:
-                    present[format_sample.sample] = str(format_sample.data.GT) == "1"
+                    present[format_sample.sample] = str(format_sample.data.GT) in ["1", "."]
                 refute = False
                 if samples_only:
                     refute = any([value for key, value in present.items() if key not in samples])
@@ -817,9 +817,9 @@ def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None):
                 if sample is None or vcf_sample.sample == sample:
                     support, total = 0, 0
                     l, r = vcf_sample.gt_alleles
-                    if l == '1':
+                    if l in ['1', '.']:
                         support += vcf_sample.data.AD[0]
-                    if r == '1':
+                    if r in ['1', '.']:
                         support += vcf_sample.data.AD[1]
                     total = vcf_sample.data.DP
                     extra["re"] = support
