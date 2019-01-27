@@ -5,7 +5,7 @@ Reconstruction of clone- and haplotype-specific Cancer Karyotypes
 [![Build Status](https://travis-ci.com/aganezov/RCK.svg?token=yNaqdjAcHsstx5v8GMKj&branch=master)](https://travis-ci.com/aganezov/RCK)
 
 
-**RCK** - is a method for **R**reconstruction of clone- and haplotype-specific **C**ancer **K**aryotypes from tumor mixtures, distributed both as a standalone software package and as a Python library  under the MIT licence.
+**RCK** - is a method for **R**econstruction of clone- and haplotype-specific **C**ancer **K**aryotypes from tumor mixtures, distributed both as a standalone software package and as a Python library  under the MIT licence.
 
 RCK has been initially designed and developed by Sergey Aganezov in the group of prof. Ben Raphael at Princeton University.
 Current development of RCK is continued by Sergey Aganezov in the group of prof. Michael Schatz at Johns Hopkins Univeristy.
@@ -30,6 +30,34 @@ The full description of the algorithm and its application on published cancer da
 
 ![RCK overview](docs/img/RCK_Overview_vertical.png)
 
+RCK infers clone- and haplotype-speicifc cancer genome karyotypes from tumor mixtures.
+
+RCK assumes that:
+* the reference human genome is diploid (except for sex chromosomes)
+* somatic evolution is propagated by large scale rearrangements (any type, quantity, etc) that respect the infinite sites assumption (i.e., no genomic location, on either copy of the homologous chromosome, prticipates in the double-stranded breakage, which are requried for a rearrangement to happen, more than once thgoughout the entire somatic evolutionary history of the tumor)
+* no novel genomic locations (unless explicitly specified) can play a role of telomeres in the derived chromosomes
+* (approximate) clone- and allele-specific fragment/segment copy numbers are inferred by 3rd-party tools and are part of the input (see more in the [segments docs](docs/Segments.md))
+* (noisy) unlabeled (i.e.,  without haplotype labels) noel adjacencies (aka structural variants) are inferred by 3rd-party tools and are part of the input (see more in the [adjacencies docs](docs/Adjacencies.md))
+
+RCK uses a Diploid Interval Adjacency Graph to represent all possible segments and transitions between them (across all clones and the reference). 
+RCK then solves an optimization problem of inferring clone- and haplotype-specific karyotypes (i.e., finding clone-specific edge multiplicity functions in the constructed DIAG) as an MILP program.
+Several constraints are taken into consideration (some of which are listed below) during the inference:
+* infinite sites complience (across all clones in the tumor)
+* adjacencies grouping (is part of the input, optional)
+* false positive for novel adjacencies presence in reconstructed karyotypes
+* maximum divergence from input (approximate) allele-specific segment/fragment copy number profile
+* preservatino of allele-separation across clones in tumor
+* telomere locations
+
+We note, that in contrast to some other cancer karyotype inference methods, RCK model has several advantages, that all work in q unifying computation framework and some/all of which differentiate RCK from other methods:
+* any level of sample heterogeneity (on the karyotype level): from homogeneous samples with a single derived clone, to tumor samples comprised of `n` derived genomes
+* support for any type of novel adjacencies signature (SV types), including copy-number-neutral ones, as well as the complicated ones arising from chromoplexy/chromothripsis events
+* model of diploid reference/non-haploid derived genomes
+* explicit control over telomere location during the inference
+* explicit fine-grain control over false positive in the novel adjacencies in the input and respectively their utilization in the inference
+* haplotype-specific (aka phased) inference both for segments and adjacencies across all clones in the tumor sample
+* support for (optional) 3rd-generation sequencing additional information 
+
 ### Installation
 
 RCK shall work on latest macOS, and main Linux distribution. 
@@ -49,7 +77,7 @@ For more details about installation please refer to the [installation documentat
 ### Input (preprocessing)
 
 The minimum input for RCK is comprised of two parts:
-1. Unlabeled novel adjacencies (aka structural variations specific to tumor samples)
+1. Unlabeled novel adjacencies (aka structural variations in the tumor sample)
 2. Clone- and allele-specific segment copy numbers
 
 Additional input can contain:
