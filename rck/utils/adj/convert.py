@@ -359,6 +359,8 @@ def get_nas_from_manta_vcf_records(manta_vcf_records, setup=None):
             continue
         if svtype == "BND":
             mate_vcf_id = record.INFO["MATEID"][0]
+            if mate_vcf_id not in records_by_ids:
+                continue
             mate_record = records_by_ids[mate_vcf_id]
             chr1 = str(record.CHROM)
             chr2 = str(mate_record.CHROM)
