@@ -1,7 +1,7 @@
 from collections import defaultdict
 from copy import deepcopy
 
-from rck.core.structures import Strand, Position
+from rck.core.structures import Strand, Position, sorted_segments_donot_overlap
 
 
 def refined_segments(segments, additional_positions=None, additional_positions_by_chrs=None):
@@ -19,6 +19,8 @@ def refined_segments(segments, additional_positions=None, additional_positions_b
         additional_positions_by_chrs[position.chromosome].append(position)
     for chr_name in list(source_fragments_by_chrs.keys()):
         source_fragments_by_chrs[chr_name] = sorted(source_fragments_by_chrs[chr_name], key=lambda s: (s.start_coordinate, s.end_coordinate))
+        if not sorted_segments_donot_overlap(segments=source_fragments_by_chrs[chr_name]):
+            raise ValueError("Some segments overlap on chromosome {chr_name}.".format(chr_name=chr_name))
     for chr_name in list(additional_positions_by_chrs.keys()):
         additional_positions_by_chrs[chr_name] = sorted(additional_positions_by_chrs[chr_name], key=lambda p: (p.coordinate, p.strand))
     for chr_name in source_fragments_by_chrs:
