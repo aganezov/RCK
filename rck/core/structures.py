@@ -1554,7 +1554,7 @@ def refined_scnt_with_adjacencies_and_telomeres(segments, scnt, adjacencies=None
     for tel_position in telomere_positions:
         positions_by_chr[tel_position.chromosome].append(tel_position)
     if len(list(positions_by_chr.keys())) == 0:
-        return fragments, deepcopy(scnt)
+        return fragments, deepcopy(scnt), {f.stable_id_non_hap: [f.stable_id_non_hap] for f in fragments}
     if not positions_within_segments(segments_by_chr=fragments_by_chr, positions_by_chr=positions_by_chr):
         raise ValueError("Either adjacency or telomere positions do not lie within segment")
     for chr_name in sorted(fragments_by_chr.keys()):
