@@ -66,7 +66,7 @@ def main():
         with open(args.titan_ichor_seg, "rt") as source:
             logger.info("Reading allele-specific segment copy number values from {file}".format(file=titan_full_path))
             segments, scnt = get_scnt_from_titan_source(source=source, sample_name=args.sample_name, clone_ids=clone_ids, separator=args.separator,
-                                                        corrected_cn_fix=args.corrected_cn_fix, chr_strip=args.chr_strip)
+                                                        corrected_cn_fix=args.corrected_cn_fix, chr_strip=args.strip_chr)
             logger.info("Writing allele-specific segment copy number values in RCK format to {file}".format(file=args.output))
             write_scnt_to_destination(destination=args.output, segments=segments, scnt=scnt, clone_ids=clone_ids, separator=args.separator)
     elif args.command == "battenberg":
@@ -74,7 +74,7 @@ def main():
         clone_ids = args.clone_ids.split(",")
         logger.debug("Clone ids are identified as {clone_ids}".format(clone_ids=",".join(clone_ids)))
         logger.info("Reading allele-specific segment copy number values form {file}".format(file=args.battenberg))
-        segments, scnt = get_scnt_from_battenberg_source(source=args.battenberg, sample_name=args.sample_name, separator=args.separator)
+        segments, scnt = get_scnt_from_battenberg_source(source=args.battenberg, sample_name=args.sample_name, separator=args.separator, chr_strip=args.strip_chr)
         logger.info("Writing allele-specific segment copy number values in RCK format to {file}".format(file=args.output))
         write_scnt_to_destination(destination=args.output, segments=segments, scnt=scnt, separator=args.separator, clone_ids=clone_ids)
     elif args.command == "hatchet":
@@ -88,7 +88,7 @@ def main():
         logger.debug("Clone ids were identified as {clone_ids}".format(clone_ids=",".join(clone_ids)))
         with open(hatchet_full_path) as source:
             logger.info("Reading allele-specific segment copy number values from {file}".format(file=hatchet_full_path))
-            segments, scnt = get_scnt_from_hatchet_source(source=source, clone_ids=clone_ids, separator=args.separator)
+            segments, scnt = get_scnt_from_hatchet_source(source=source, clone_ids=clone_ids, separator=args.separator, chr_strip=args.strip_chr)
             logger.info("Writing allele-specific segment copy number values in RCK format to {file}".format(file=args.output))
             write_scnt_to_destination(destination=args.output, segments=segments, scnt=scnt, clone_ids=clone_ids, separator=args.separator)
     elif args.command == "remixt":
@@ -96,7 +96,7 @@ def main():
         clone_ids = args.clone_ids.split(",")
         logger.debug("Clone ids were identified as {clone_ids}".format(clone_ids=",".join(clone_ids)))
         logger.info("Reading allele-specific segment copy number values from {file}".format(file=args.remixt))
-        segments, scnt = get_scnt_from_remixt_source(source=args.remixt, separator=args.separator)
+        segments, scnt = get_scnt_from_remixt_source(source=args.remixt, separator=args.separator, chr_strip=args.strip_chr)
         logger.info("Writing allele-specific segment copy number values in RCK format to {file}".format(file=args.output))
         write_scnt_to_destination(destination=args.output, segments=segments, scnt=scnt, separator=args.separator, clone_ids=clone_ids)
     logger.info("Success!")
