@@ -40,7 +40,7 @@ def main():
     hatchet_parser.add_argument("hatchet", type=str)
     hatchet_parser.add_argument("--separator", default="\t")
     hatchet_parser.add_argument("--min-usage", type=float, default=0.01)
-    hatchet_parser.add_argument("-o", "--output", default=sys.stdout)
+    hatchet_parser.add_argument("-o", "--output", type=argparse.FileType("wt"), default=sys.stdout)
     group = hatchet_parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--sample-name", default=None)
     group.add_argument("--clone-ids", default=None)
