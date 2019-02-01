@@ -951,6 +951,7 @@ class Genome(list):
 class AdjacencyGroupType(Enum):
     MOLECULE = "M"
     LABELING = "L"
+    GENERAL = "N"
 
     @classmethod
     def from_string(cls, string):

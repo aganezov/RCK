@@ -19,6 +19,7 @@ PY = "PY"
 PP = "Pp"
 
 DEFAULT_GROUP_M_FP = "DEFAULT_GROUP_M_FP"
+DEFAULT_GROUP_N_FP = "DEFAULT_GROUP_N_FP"
 SEGMENT_LENGTH_ATTRIBUTE = "SEGMENT_LENGTH_ATTRIBUTE"
 
 
@@ -405,6 +406,7 @@ class OptModelMultiClone(object):
 
     def define_constraints_for_adjacency_groups(self):
         self.define_constraints_for_adjacency_groups_molecule()
+        self.define_constraints_for_adjacency_groups_general()
 
     def define_constraints_for_adjacency_groups_molecule(self):
         for adj_group in filter(lambda ag: ag.group_type == AdjacencyGroupType.MOLECULE, self.hapl_adjacencies_groups):
@@ -428,6 +430,17 @@ class OptModelMultiClone(object):
             ###
             self.gm.addConstr(g.quicksum([self.variables[ADJ_GROUPS][clone_id][adj_group.gid] for clone_id in self.clone_ids]),
                               g.GRB.GREATER_EQUAL, 1, name="group-molecule-across_{{{gid}}}".format(gid=str(adj_group.gid)))
+
+    def define_constraints_for_adjacency_groups_general(self):
+        for adj_group in filter(lambda ag: ag.group_type == AdjacencyGroupType.GENERAL, self.hapl_adjacencies_groups):
+            fp = adj_group.extra.get(FALSE_POSITIVE, self.extra.get(DEFAULT_GROUP_N_FP, 0.1))
+            group_size = len(adj_group.adjacencies_ids)
+            fp_lin_expr = g.LinExpr()
+            for adjacency in adj_group.adjacencies:
+                aid = adjacency.stable_id_non_phased
+                fp_lin_expr.add(g.quicksum([self.variables[PROD][PP][aid][ph] for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]]), mult=(1.0 / group_size))
+            self.gm.addConstr(fp_lin_expr, g.GRB.GREATER_EQUAL, g.LinExpr(1 - fp), name="general_group-fp_{{{gid}}}".format(gid=adj_group.gid))
+
 
     def define_constraints_on_nodes(self):
         """

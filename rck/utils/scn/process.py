@@ -38,7 +38,7 @@ def refined_segments(segments, additional_positions=None, additional_positions_b
                 current_position = next(chr_positions, None)
             elif current_position.coordinate == current_segment.end_coordinate and current_position.strand == Strand.FORWARD:
                 current_position = next(chr_positions, None)
-            elif current_position.coordinate <= current_fragment.end_position:
+            elif current_position.coordinate <= current_fragment.end_coordinate:
                 if current_position.strand == Strand.FORWARD:
                     left_partition_coordinate = current_position.coordinate
                 else:
@@ -53,7 +53,7 @@ def refined_segments(segments, additional_positions=None, additional_positions_b
                 current_segment.start_position = new_start_position
                 refined_segments.append(current_segment)
                 current_position = next(chr_positions, None)
-            elif current_position.coordinate > current_fragment.end_position:
+            elif current_position.coordinate > current_fragment.end_coordinate:
                 new_to_old.append(current_segment.stable_id_non_hap)
                 current_fragment_id = current_fragment.stable_id_non_hap
                 for sid in new_to_old:
@@ -61,7 +61,8 @@ def refined_segments(segments, additional_positions=None, additional_positions_b
                     segments_ids_mapping[sid].append(current_fragment_id)
                 current_fragment = next(chr_fragments, None)
                 current_segment = deepcopy(current_fragment)
-                refined_segments.append(current_segment)
+                if current_fragment is not None:
+                    refined_segments.append(current_segment)
                 new_to_old = []
             else:
                 raise ValueError("Something went wrong")

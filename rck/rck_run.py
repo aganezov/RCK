@@ -7,6 +7,8 @@ import shutil
 import sys
 from copy import deepcopy
 
+from core.ilp_gurobi import DEFAULT_GROUP_N_FP
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 import rck
@@ -103,6 +105,7 @@ def main():
     run_group.add_argument("--run-g-threads", type=int, default=4)
     run_group.add_argument("--run-nas-fp", type=float, default=0.1)
     run_group.add_argument("--run-group-m-default-fp", type=float, default=0.1)
+    run_group.add_argument("--run-group-n-default-fp", type=float, default=0.1)
     run_group.add_argument("--run-segment-length-attr", choices=["length, length_100, length_1000"], default="length_100")
     run_group.add_argument("--run-g-allow-interrupted", action="store_true")
     ###
@@ -115,11 +118,13 @@ def main():
     output_group.add_argument("--o-acnt-mix-novel-and-reference", action="store_true",)
     ###
     post_group = parser.add_argument_group()
-    post_group.add_argument("--post-check-scnb", action="store_true", dest="post_check_scnb")
     post_group.add_argument("--post-check-all", action="store_true", dest="post_check_all")
+    post_group.add_argument("--post-check-scnb", action="store_true", dest="post_check_scnb")
     post_group.add_argument("--post-check-labeling", action="store_true", dest="post_check_labeling")
     post_group.add_argument("--post-check-balancing", action="store_true", dest="post_check_balancing")
-    post_group.add_argument("--post-check-adj-groups", action="store_true", dest="post_check_adj_group")
+    post_group.add_argument("--post-check-adj-groups", action="store_true", dest="post_check_adj_groups")
+    post_group.add_argument("--post-check-adj-groups-m", action="store_true", dest="post_check_adj_groups_m")
+    post_group.add_argument("--post-check-adj-groups-n", action="store_true", dest="post_check_adj_groups_n")
     post_group.add_argument("--post-check-nas-fp", action="store_true", dest="post_check_nas_fp")
     ###
     args = parser.parse_args()
@@ -421,6 +426,7 @@ def main():
     gurobi_log_path = os.path.join(output_dir, "gurobi.log")
     logger.info("Gurobi log will be stored in {log_path}".format(log_path=gurobi_log_path))
     extra = {DEFAULT_GROUP_M_FP: args.run_group_m_default_fp,
+             DEFAULT_GROUP_N_FP: args.run_group_n_default_fp,
              SEGMENT_LENGTH_ATTRIBUTE: args.run_segment_length_attr}
     logger.debug("Gurobi ILP extra is {extra}".format(extra=str(extra)))
     logger.info("Setting up Gurobi ILP model (includes construction of the IAG)")
@@ -602,8 +608,8 @@ def main():
                 logger.info("Everything is OK! in clone {clone_id} all extremities have non-negative copy number excess, and inferred telomere sites concur with the input"
                             "".format(clone_id=clone_id))
 
-    if args.post_check_all or args.post_check_adj_groups:
-        logger.info("Performing post-inference check on adjacencies groups")
+    if args.post_check_all or args.post_check_adj_groups or args.post_check_adj_groups_m:
+        logger.info("Performing post-inference check on adjacencies groups (molecule type)")
         molecule_groups = [ag for ag in adjacency_groups if ag.group_type == AdjacencyGroupType.MOLECULE]
         molecule_groups_fine_cnt = 0
         logger.info("There were {cnt} molecule adjacency groups in the input.".format(cnt=len(molecule_groups)))
@@ -628,7 +634,33 @@ def main():
         if molecule_groups_fine_cnt == len(molecule_groups):
             logger.info("Everything is OK for all {good}/{all} molecule adjacency groups.".format(good=molecule_groups_fine_cnt, all=len(molecule_groups)))
         else:
-            logger.error("Something went WRONG! In some molecule adjacency groups (see above) not a single clone has <= than the input FP of.")
+            logger.error("Something went WRONG! In some molecule adjacency groups (see above) not a single clone has <= than the input FP.")
+
+    if args.post_check_all or args.post_check_adj_groups or args.post_check_adj_groups_n:
+        logger.info("Performing post-inference check on adjacency groups (general type)")
+        general_groups = [ag for ag in adjacency_groups if ag.group_type == AdjacencyGroupType.GENERAL]
+        general_groups_fine_cnt = 0
+        logger.info("There were {cnt} general adjacency groups in the input.".format(cnt=len(general_groups)))
+        for group in general_groups:
+            group_fp = group.extra.get(FALSE_POSITIVE, extra[DEFAULT_GROUP_N_FP])
+            total_present = set()
+            for clone_id in clone_ids:
+                acnp = acnt[clone_id]
+                clone_specific = acnp.haploid_adjacencies_present(adjacencies=group.adjacencies)
+                for adjacency in clone_specific:
+                    total_present.add(adjacency.stable_id_non_phased)
+            inferred_fp = 1 - (len(total_present) * 1.0 / len(group.adjacencies_ids))
+            if inferred_fp > group_fp:
+                logger.error("Something went wrong! In Adjacency Group {gid} inferred FP is {inferred:0.4f}, while input maximum FP was {group_fp:0.4f}."
+                             "".format(gid=group.gid, inferred=inferred_fp, group_fp=group_fp))
+            else:
+                logger.debug("Group {gid} is fine (inferred FP is {inferred:0.4f}, with the input maximum FP being {group_fp:0.4f}"
+                             "".format(gid=group.gid, inferred=inferred_fp, group_fp=group_fp))
+                general_groups_fine_cnt += 1
+        if general_groups_fine_cnt == len(general_groups):
+            logger.info("Everything is OK for all {good}/{all} general adjacency groups.".format(good=general_groups_fine_cnt, all=len(adjacency_groups)))
+        else:
+            logger.error("Something went WRONG! In some general adjacency groups (see above) inferred FP was greater then the maximum input FP.")
 
     if args.post_check_all or args.post_check_nas_fp:
         logger.info("Performing post-inference check on overall novel adjacencies false positive parameter")
