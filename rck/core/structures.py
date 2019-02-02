@@ -29,7 +29,9 @@ class Strand(Enum):
     def __lt__(self, other):
         if not isinstance(other, Strand):
             return False
-        return self.value < other.value
+        if self.value != other.value:
+            return self.value == "-"
+        return False
 
 
 class PositionType(Enum):
