@@ -435,7 +435,11 @@ class Segment(object):
 
     @property
     def length_100(self):
-        return int(self.length_1000 * 10)
+        return int(math.ceil(int(self.end_position.coordinate - self.start_position.coordinate) / 100.0))
+
+    @property
+    def length_10(self):
+        return int(math.ceil(int(self.end_position.coordinate - self.start_position.coordinate) / 10.0))
 
     @property
     def start_coordinate(self):
@@ -975,9 +979,10 @@ class AdjacencyGroup(object):
     def stable_id(self):
         return "{gid}:{g_type}:<{aids}>".format(gid=self.gid, g_type=str(self.group_type.value), aids=",".join(self.adjacencies_ids))
 
-    def populate_adjacencies_via_ids(self, source):
+    def populate_adjacencies_via_ids(self, source, source_by_ids=None):
         from rck.core.io import EXTERNAL_NA_ID
-        source_by_ids = {adj.extra.get(EXTERNAL_NA_ID, adj.idx): adj for adj in source}
+        if source_by_ids is None:
+            source_by_ids = {adj.extra.get(EXTERNAL_NA_ID, adj.idx): adj for adj in source}
         for aid in self.adjacencies_ids:
             if aid not in source_by_ids:
                 raise ValueError("Trying to populate adjacencies in adjacency group {gid}, but adjacency {aid} (reference in the group) is missing from available adjacencies"
@@ -1558,8 +1563,10 @@ def refined_scnt_with_adjacencies_and_telomeres(segments, scnt, adjacencies=None
         positions_by_chr[tel_position.chromosome].append(tel_position)
     if len(list(positions_by_chr.keys())) == 0:
         return fragments, deepcopy(scnt), {f.stable_id_non_hap: [f.stable_id_non_hap] for f in fragments}
-    if not positions_within_segments(segments_by_chr=fragments_by_chr, positions_by_chr=positions_by_chr):
-        raise ValueError("Either adjacency or telomere positions do not lie within segment")
+    bad_positions = positions_outside_segments(segments_by_chr=fragments_by_chr, positions_by_chr=positions_by_chr)
+    if len(bad_positions) > 0:
+        raise ValueError("Either adjacency or telomere positions ({positions}) do not lie within segment"
+                         "".format(positions=",".join(map(lambda p: p.stable_id_non_hap, bad_positions))))
     for chr_name in sorted(fragments_by_chr.keys()):
         fragments_by_chr[chr_name] = sorted(fragments_by_chr[chr_name], key=lambda s: (s.start_position, s.end_position))
         if not sorted_segments_donot_overlap(segments=fragments_by_chr[chr_name]):
@@ -1663,11 +1670,16 @@ def extract_spanned_extremities(source, boundaries):
     return result
 
 
-def positions_within_segments(segments_by_chr, positions_by_chr):
+def positions_outside_segments(segments_by_chr, positions_by_chr, short_circuit=True):
     segments_chr_names = set(segments_by_chr.keys())
     positions_chr_names = set(positions_by_chr.keys())
+    result = []
     if len(positions_chr_names - segments_chr_names) > 0:
-        return False
+        positions_only_chromosomes = positions_chr_names - segments_chr_names
+        for chr_name in positions_only_chromosomes:
+            result.extend(positions_by_chr[chr_name])
+            if short_circuit:
+                return result
     chr_names = sorted(positions_chr_names & segments_chr_names)
     for chr_name in chr_names:
         segments = iter(sorted(segments_by_chr[chr_name], key=lambda s: (s.start_position.coordinate, s.end_position.coordinate)))
@@ -1676,14 +1688,19 @@ def positions_within_segments(segments_by_chr, positions_by_chr):
         current_position = next(positions, None)
         while current_segment is not None and current_position is not None:
             if current_position.coordinate < current_segment.start_position.coordinate:
-                return False
+                result.append(current_position)
+                if short_circuit:
+                    return result
             elif current_segment.start_position.coordinate <= current_position.coordinate <= current_segment.end_position.coordinate:
                 current_position = next(positions, None)
             else:
                 current_segment = next(segments, None)
-        if current_position is not None:
-            return False
-    return True
+        while current_position is not None:
+            result.append(current_position)
+            if short_circuit:
+                return result
+            current_position = next(positions, None)
+    return result
 
 
 def set_cnr(parent_fragment, fcnt, child_segment, scnt):

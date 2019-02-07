@@ -2,6 +2,7 @@
 import argparse
 import ast
 import csv
+import sys
 import datetime
 import itertools
 import logging
@@ -14,10 +15,13 @@ from rck.core.structures import AdjacencyCopyNumberProfile, AdjacencyGroup, CNBo
 from rck.core.structures import SegmentCopyNumberProfile, Haplotype, AdjacencyType, Phasing
 from rck.core.structures import Position, Strand, Adjacency, Segment
 
+csv.field_size_limit(sys.maxsize)
+
 AID = "aid"
 GID = "gid"
 AIDS = "aids"
 AG_TYPE = "agt"
+AG_LABELING = "agl"
 FALSE_POSITIVE = "fp"
 
 CHR1 = "chr1"
@@ -954,6 +958,8 @@ def parse_adj_groups_extra(extra_string, extra_separator=";"):
             value = AdjacencyGroupType.from_string(string=value)
         elif key == FALSE_POSITIVE:
             value = float(value)
+        elif key == AG_LABELING:
+            value = list(map(int, value.split(",")))
         result[key] = value
     return result
 
@@ -978,11 +984,13 @@ def write_adjacency_groups_to_destination(destination, adjacency_groups, separat
         data = {}
         data[GID] = ag.gid
         data[AIDS] = aids_separator.join(sorted(map(str, ag.adjacencies_ids)))
-        extra_strings = ["{ag_type_string}={ag_type}".format(ag_type_string=AG_TYPE, ag_type=ag.group_type.value)]
+        extra_strings = []
         if extra_description_is_all(extra=extra):
             for key, value in ag.extra.items():
                 if isinstance(value, (list, tuple)):
                     value = ",".join(map(str, value))
+                elif isinstance(value, AdjacencyGroupType):
+                    value = value.value
                 extra_strings.append("{extra_name}={extra_value}".format(extra_name=str(key).lower(), extra_value=value if value is not None else extra_fill))
         else:
             for entry in extra:
@@ -992,6 +1000,11 @@ def write_adjacency_groups_to_destination(destination, adjacency_groups, separat
                 if isinstance(value, (list, tuple)):
                     value = ",".join(map(str, value))
                 extra_strings.append("{extra_name}={extra_value}".format(extra_name=str(entry).lower(), extra_value=value))
+        agt_present = False
+        for extra_string in extra_strings:
+            agt_present |= "{ag_type_string}=".format(ag_type_string=AG_TYPE) in extra_string
+        if not agt_present:
+            extra_strings.append("{ag_type_string}={ag_type}".format(ag_type_string=AG_TYPE, ag_type=ag.group_type.value))
         extra_string = extra_separator.join(extra_strings)
         data[EXTRA] = extra_string
         writer.writerow(data)

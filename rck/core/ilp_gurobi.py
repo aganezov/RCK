@@ -1,18 +1,19 @@
-import itertools
+import gurobi as g
+import networkx as nx
 
+from core.io import EXTERNAL_NA_ID, AG_LABELING
 from rck.core.graph import IntervalAdjacencyGraph
 from rck.core.io import FALSE_POSITIVE
-from rck.core.structures import SegmentCopyNumberProfile, AdjacencyCopyNumberProfile, check_and_fill_segments_to_fragments, AdjacencyGroupType, SCNBoundariesStrategies, \
-    SegmentCopyNumberBoundaries, CNBoundaries
 from rck.core.structures import Phasing, AdjacencyType, Haplotype, get_aabb_for_ra, get_abba_for_na_and_position
-import gurobi as g
+from rck.core.structures import SegmentCopyNumberProfile, AdjacencyCopyNumberProfile, check_and_fill_segments_to_fragments, AdjacencyGroupType, CNBoundaries
 
 FRAGMENT_ALLELE = "fragment_flipping"
 SEGMENT_COPY_NUMBER = "segment_copy_number"
 YR = "YR"
 YN = "YN"
 P = "P"
-ADJ_GROUPS = "U"
+ADJ_GROUPS_M = "U-m"
+ADJ_GROUPS_L = "U-l"
 DELTA = "Delta"
 PROD = "Prod"
 PY = "PY"
@@ -49,7 +50,7 @@ class OptModelMultiClone(object):
         self.iag = IntervalAdjacencyGraph(segments=self.hapl_segments, adjacencies=self.hapl_adjacencies)
         self.iag.build_graph()
         self.variables = self.populate_variables_dict()
-        self.model = g.Model("RCK-mc-gg")  # multi-clone, genome-groups; change when other features (e.g., multi-sample, labeling constraints, trees, etc)
+        self.model = g.Model("RCK-mc-mln")  # multi-clone, molecule, labeling, and general groups; change when other features (e.g., multi-sample, labeling constraints, trees, etc)
         self.gm = self.model
         self.reciprocal_locations = []
 
@@ -96,14 +97,21 @@ class OptModelMultiClone(object):
         }
 
         # defining p_{i,u} variables,
-
-        result[ADJ_GROUPS] = {
+        # molecule adjacency groups
+        result[ADJ_GROUPS_M] = {
             clone_id: {
-                ag.gid: None for ag in sorted(self.hapl_adjacencies_groups, key=lambda ag: ag.gid)
+                ag.gid: None for ag in sorted(filter(lambda ag: ag.group_type == AdjacencyGroupType.MOLECULE, self.hapl_adjacencies_groups), key=lambda ag: ag.gid)
             } for clone_id in self.clone_ids
         }
-        # defining \Delta_{i,j,A}, \Delta_{i,j,B} variables (distance from inferred segment copy numbers, and the starting ones)
 
+        # defining p_{A|B,u} variable
+        # labeling adjacency groups
+        result[ADJ_GROUPS_L] = {
+            ag.gid: {Haplotype.A: None, Haplotype.B: None} for ag in
+            sorted(filter(lambda ag: ag.group_type == AdjacencyGroupType.LABELING, self.hapl_adjacencies_groups), key=lambda ag: ag.gid)
+        }
+
+        # defining \Delta_{i,j,A}, \Delta_{i,j,B} variables (distance from inferred segment copy numbers, and the starting ones)
         result[DELTA] = {
             clone_id: {
                 s.stable_id_non_hap: {Haplotype.A: None, Haplotype.B: None} for s in self.hapl_segments
@@ -201,10 +209,18 @@ class OptModelMultiClone(object):
         # Binary indicator presence variable that determines whether a group of adjacencies is present in a given clone, or not
         ###
         for clone_id in self.clone_ids:
-            for gid in list(self.variables[ADJ_GROUPS][clone_id].keys()):
-                self.variables[ADJ_GROUPS][clone_id][gid] = self.gm.addVar(vtype=g.GRB.BINARY, name="p_{{u,{cid},{gid}}}".format(cid=str(clone_id),
-                                                                                                                                 gid=str(gid)))
+            for gid in list(self.variables[ADJ_GROUPS_M][clone_id].keys()):
+                self.variables[ADJ_GROUPS_M][clone_id][gid] = self.gm.addVar(vtype=g.GRB.BINARY, name="p_{{u,{cid},{gid}}}".format(cid=str(clone_id),
+                                                                                                                                   gid=str(gid)))
         ######
+
+        ###
+        # Binary indicator presence variable that determines whether any of the adjacencies in the given group are present on respective haplotype
+        ###
+        for gid in list(self.variables[ADJ_GROUPS_L].keys()):
+            for haplotype in [Haplotype.A, Haplotype.B]:
+                self.variables[ADJ_GROUPS_L][gid][haplotype] = self.gm.addVar(vtype=g.GRB.BINARY, name="p_{{u,{gid},{hap}}}".format(gid=str(gid),
+                                                                                                                                    hap=str(haplotype.value)))
 
         ###
         # Internal variable that encodes the difference between the inferred segment copy numbers and the original values
@@ -407,12 +423,13 @@ class OptModelMultiClone(object):
     def define_constraints_for_adjacency_groups(self):
         self.define_constraints_for_adjacency_groups_molecule()
         self.define_constraints_for_adjacency_groups_general()
+        self.define_constraints_for_adjacency_groups_labeling()
 
     def define_constraints_for_adjacency_groups_molecule(self):
         for adj_group in filter(lambda ag: ag.group_type == AdjacencyGroupType.MOLECULE, self.hapl_adjacencies_groups):
             fp = adj_group.extra.get(FALSE_POSITIVE, self.extra.get(DEFAULT_GROUP_M_FP, 0.1))
             for clone_id in self.clone_ids:
-                group_var = self.variables[ADJ_GROUPS][clone_id][adj_group.gid]
+                group_var = self.variables[ADJ_GROUPS_M][clone_id][adj_group.gid]
                 group_size = len(adj_group.adjacencies_ids)
                 lin_expr = g.LinExpr()
                 for adjacency in adj_group.adjacencies:
@@ -428,7 +445,7 @@ class OptModelMultiClone(object):
             ###
             # we force in at least 1 clone the p_{i, u} variable to be equal to 1, thus forcing at least one clone-specific inequality to force the group (fraction) realization
             ###
-            self.gm.addConstr(g.quicksum([self.variables[ADJ_GROUPS][clone_id][adj_group.gid] for clone_id in self.clone_ids]),
+            self.gm.addConstr(g.quicksum([self.variables[ADJ_GROUPS_M][clone_id][adj_group.gid] for clone_id in self.clone_ids]),
                               g.GRB.GREATER_EQUAL, 1, name="group-molecule-across_{{{gid}}}".format(gid=str(adj_group.gid)))
 
     def define_constraints_for_adjacency_groups_general(self):
@@ -441,6 +458,34 @@ class OptModelMultiClone(object):
                 fp_lin_expr.add(g.quicksum([self.variables[PROD][PP][aid][ph] for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]]), mult=(1.0 / group_size))
             self.gm.addConstr(fp_lin_expr, g.GRB.GREATER_EQUAL, g.LinExpr(1 - fp), name="general_group-fp_{{{gid}}}".format(gid=adj_group.gid))
 
+    def define_constraints_for_adjacency_groups_labeling(self):
+        self.hapl_adjacencies_by_external_ids = {adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased): adj for adj in self.hapl_adjacencies}
+        for adj_group in filter(lambda ag: ag.group_type == AdjacencyGroupType.LABELING, self.hapl_adjacencies_groups):
+            aids = adj_group.adjacencies_ids
+            indexes = adj_group.extra.get(AG_LABELING, [])
+            if len(aids) != len(indexes):
+                continue
+            positions = []
+            for aid, index in zip(aids, indexes):
+                adjacency = self.hapl_adjacencies_by_external_ids[aid]
+                position = adjacency.position1 if indexes == 0 else adjacency.position2
+                positions.append(position)
+            group_vars = []
+            for haplotype in [Haplotype.A, Haplotype.B]:
+                positions_adjacency_variables = []
+                group_var = self.variables[ADJ_GROUPS_L][adj_group.gid][haplotype]
+                group_vars.append(group_var)
+                for position in positions:
+                    for na_w_data in self.iag.nov_adjacency_edges(nbunch=position, data=True):
+                        u, v, data = na_w_data
+                        na = data["object"]
+                        aid = na.stable_id_non_phased
+                        positions_adjacency_variables.append(self.variables[PROD][PP][aid][get_aabb_for_ra(haplotype=Haplotype.A)])
+                        positions_adjacency_variables.append(self.variables[PROD][PP][aid][get_abba_for_na_and_position(novel_adjacency=na,
+                                                                                                                        position=position, haplotype=haplotype)])
+                self.gm.addGenConstrOr(group_var, positions_adjacency_variables, name="labeling_group-{{{gid},{hap}}}".format(gid=adj_group.gid,
+                                                                                                                              hap=haplotype.value))
+            self.gm.addConstr(g.quicksum(group_vars), g.GRB.LESS_EQUAL, 1, name="labeling_group-{{{gid}}}".format(gid=adj_group.gid))
 
     def define_constraints_on_nodes(self):
         """

@@ -7,7 +7,7 @@ import shutil
 import sys
 from copy import deepcopy
 
-from core.ilp_gurobi import DEFAULT_GROUP_N_FP
+from utils.adj.adjacency_group_process import refined_labeling_groups
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
@@ -103,10 +103,11 @@ def main():
     run_group.add_argument("--run-g-mip-gap", type=float, default=0.015)
     run_group.add_argument("--run-g-time-limit", type=int, default=28800)
     run_group.add_argument("--run-g-threads", type=int, default=4)
+    run_group.add_argument("--run-g-mip-focus", type=int, choices=[0, 1, 2, 3], default=0)
     run_group.add_argument("--run-nas-fp", type=float, default=0.1)
     run_group.add_argument("--run-group-m-default-fp", type=float, default=0.1)
     run_group.add_argument("--run-group-n-default-fp", type=float, default=0.1)
-    run_group.add_argument("--run-segment-length-attr", choices=["length, length_100, length_1000"], default="length_100")
+    run_group.add_argument("--run-segment-length-attr", choices=["length", "length_10", "length_100", "length_1000"], default="length_10")
     run_group.add_argument("--run-g-allow-interrupted", action="store_true")
     ###
     output_group = parser.add_argument_group()
@@ -129,7 +130,7 @@ def main():
     ###
     args = parser.parse_args()
 
-    from rck.core.ilp_gurobi import OptModelMultiClone, DEFAULT_GROUP_M_FP, SEGMENT_LENGTH_ATTRIBUTE
+    from rck.core.ilp_gurobi import OptModelMultiClone, DEFAULT_GROUP_M_FP, SEGMENT_LENGTH_ATTRIBUTE, DEFAULT_GROUP_N_FP
     import gurobi as g
     logger = get_standard_logger_from_args(args=args, program_name="RCK")
 
@@ -319,7 +320,7 @@ def main():
     logger.info("A total of input telomere locations is {cnt}".format(cnt=len(input_telomere_positions)))
 
     logger.info("Finished preprocessing. At this point every data part must be aligned with each other.")
-
+    logger.info("Checking data alignment/concordance")
     if fragments is None:
         logger.error("FRAGMENTS must exist; their absence at this point indicates that preprocessing was turned off, while --fragments were not part of the original input")
         exit(1)
@@ -342,22 +343,27 @@ def main():
     for na in input_adjacencies:
         nas_positions.append(na.position1)
         nas_positions.append(na.position2)
+    logger.debug("Checking novel adjacency positions concordance")
     if not positions_aligned(segments_positions=segments_positions, other_positions=nas_positions):
         logger.error("NOVEL ADJACENCIES positions are not aligned with extremities of SEGMENTS; "
                      "having this problem at this point indicates that the preprocessing was turned off and the data in original input SCNT and NAS is not aligned")
         exit(1)
     telomeres = sorted(get_ref_telomeres_from_segments(segments=segments) + input_telomere_positions, key=lambda p: p.coordinate)
+    logger.debug("Checking telomere positions concordance")
     if not positions_aligned(segments_positions=segments_positions, other_positions=telomeres):
         logger.error("TELOMERES positions are not aligned with extremities of SEGMENTS; "
                      "having this problem at this problem indicates that preprocessing was turned off and the data in the original SCNT and --telomeres is not aligned")
         exit(1)
+    logger.debug("Checking adjacency groups concordance")
     if len(adjacency_groups) > 0 and not adj_groups_concur(adj_groups=adjacency_groups, adjacencies=input_adjacencies):
         logger.error("Some novel adjacencies group in NAS-GROUPS refers to an absent ADJACENCY; "
                      "having this problem at this time indicates that either the original --nas-groups has a group that is referring to the missing novel adjacency in NAS, "
                      "or the referred novel adjacency from NAS was removed during the preprocessing.")
         exit(1)
+    logger.debug("Populating adjacency groups")
+    adjacencies_by_external_ids = {adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased): adj for adj in input_adjacencies}
     for ag in adjacency_groups:
-        ag.populate_adjacencies_via_ids(source=input_adjacencies)
+        ag.populate_adjacencies_via_ids(source=input_adjacencies, source_by_ids=adjacencies_by_external_ids)
 
     ########
     #
@@ -385,12 +391,6 @@ def main():
     logger.info("Writing (preprocessed) fragments data to {file}".format(file=preprocessed_fragments_file))
     write_segments_to_file(file_name=preprocessed_fragments_file, segments=fragments, extra=None)
 
-    preprocessed_adjacencies_group_file = os.path.join(preprocessed_input_dir_path, "rck.ag.tsv")
-    if len(adjacency_groups) > 0:
-        logger.info("Writing (preprocessed) adjacency groups to {file}".format(file=preprocessed_adjacencies_group_file))
-        write_adjacency_groups_to_file(file_name=preprocessed_adjacencies_group_file, adjacency_groups=adjacency_groups)
-    else:
-        logger.debug("No adjacencies groups information is present. Nothing to write.")
     ########
 
     logger.debug("Extracting reference adjacencies from input segments")
@@ -398,13 +398,34 @@ def main():
     logger.debug("A total of {cnt} reference unlabeled adjacencies are considered (labeled will be x2, except for X and Y chromosomes)".format(cnt=len(ref_adjacencies)))
     adjacencies = input_adjacencies + ref_adjacencies
     output_dir = os.path.join(workdir_path, "output")
-    logger.debug("Output directory is {output}".format(output=output_dir))
-    os.makedirs(output_dir, exist_ok=True)
+
+    iag = None
+    molecule_groups = [ag for ag in adjacency_groups if ag.group_type == AdjacencyGroupType.MOLECULE]
+    labeling_groups = [ag for ag in adjacency_groups if ag.group_type == AdjacencyGroupType.LABELING]
+    general_groups = [ag for ag in adjacency_groups if ag.group_type == AdjacencyGroupType.GENERAL]
+    logger.debug("A total of {cnt} molecule adjacency groups were obtained".format(cnt=len(molecule_groups)))
+    logger.debug("A total of {cnt} labeling adjacency groups were obtained".format(cnt=len(labeling_groups)))
+    logger.debug("A total of {cnt} general adjacency groups were obtained".format(cnt=len(general_groups)))
+    if len(labeling_groups) > 0:
+        logger.info("Refining input labeling adjacency groups")
+        logger.debug("Building (D)IAG, as reciprocality matters")
+        iag = IntervalAdjacencyGraph(segments=segments, adjacencies=adjacencies)
+        iag.build_graph()
+        labeling_groups = refined_labeling_groups(adj_groups=labeling_groups, iag=iag, adjacencies=adjacencies, gid_suffix="rck-run-L", retain_source_gids=True)
+        logger.debug("A total of {cnt} labeling adjacency groups were obtained after refinement".format(cnt=len(labeling_groups)))
+    adjacency_groups = molecule_groups + labeling_groups + general_groups
+    preprocessed_adjacencies_group_file = os.path.join(preprocessed_input_dir_path, "rck.ag.tsv")
+    if len(adjacency_groups) > 0:
+        logger.info("Writing (preprocessed) adjacency groups to {file}".format(file=preprocessed_adjacencies_group_file))
+        write_adjacency_groups_to_file(file_name=preprocessed_adjacencies_group_file, adjacency_groups=adjacency_groups)
+    else:
+        logger.debug("No adjacencies groups information is present. Nothing to write.")
 
     if args.telomere_reciprocal:
         logger.info("Reciprocal telomere positions are specified via --telomere-positions-reciprocal. Extracting.")
-        iag = IntervalAdjacencyGraph(segments=segments, adjacencies=adjacencies)
-        iag.build_graph()
+        if iag is None:
+            iag = IntervalAdjacencyGraph(segments=segments, adjacencies=adjacencies)
+            iag.build_graph()
         for u, v in iag.ref_adjacency_edges(data=False):
             if u in telomeres and v not in telomeres:
                 telomeres.append(v)
@@ -413,6 +434,9 @@ def main():
     preprocessed_telomeres_file = os.path.join(preprocessed_input_dir_path, "rck.pos.tsv")
     logger.info("Writing (preprocessed) telomeres (both input and reference) to {file}".format(file=preprocessed_telomeres_file))
     write_positions_to_file(file_name=preprocessed_telomeres_file, positions=telomeres)
+
+    logger.debug("Output directory is {output}".format(output=output_dir))
+    os.makedirs(output_dir, exist_ok=True)
 
     ##########
     #
@@ -444,6 +468,7 @@ def main():
     logger.debug("Setting gurobi parameters")
     ilp_model.gm.setParam("MIPGap", args.run_g_mip_gap)
     ilp_model.gm.setParam("MIPGapAbs", args.run_g_mip_gap)
+    ilp_model.gm.setParam("MIPFocus", args.run_g_mip_focus)
     ilp_model.gm.setParam("LogFile", gurobi_log_path)
     ilp_model.gm.setParam("TimeLimit", args.run_g_time_limit)
     ilp_model.gm.setParam("Threads", args.run_g_threads)
@@ -452,6 +477,7 @@ def main():
 
     logger.info("Gurobi model solving has ended")
     status = ilp_model.gm.status
+    solution_cnt = ilp_model.gm.solcount
     if status == g.GRB.Status.INFEASIBLE:
         logger.error("Constructed model was infeasible to solve. This usually happens because of the tight segment copy number boundaries.")
         logger.error("\t Try more flexible segment copy number boundaries or try increasing allowed Novel adjacencies False Positive value.")
@@ -467,6 +493,9 @@ def main():
         allowed_statuses.append(g.GRB.Status.INTERRUPTED)
     if status not in allowed_statuses:
         logger.error("Gurobi finished with status {status}".format(status=status))
+        logger.error("Inference was unsuccessful")
+        exit(1)
+    if solution_cnt == 0:
         logger.error("Inference was unsuccessful")
         exit(1)
 
