@@ -1,9 +1,9 @@
 import gurobi as g
 import networkx as nx
 
-from core.io import EXTERNAL_NA_ID, AG_LABELING
+
 from rck.core.graph import IntervalAdjacencyGraph
-from rck.core.io import FALSE_POSITIVE
+from rck.core.io import FALSE_POSITIVE, EXTERNAL_NA_ID, AG_LABELING
 from rck.core.structures import Phasing, AdjacencyType, Haplotype, get_aabb_for_ra, get_abba_for_na_and_position
 from rck.core.structures import SegmentCopyNumberProfile, AdjacencyCopyNumberProfile, check_and_fill_segments_to_fragments, AdjacencyGroupType, CNBoundaries
 
