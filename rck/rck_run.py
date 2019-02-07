@@ -7,12 +7,11 @@ import shutil
 import sys
 from copy import deepcopy
 
-from utils.adj.adjacency_group_process import refined_labeling_groups
-
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 import rck
 from rck.utils.adj.process import refined_adjacencies_reciprocal
+from rck.utils.adj.adjacency_group_process import refined_labeling_groups
 from rck.core.io import read_adjacencies_from_file, write_acnt_to_file, get_logging_cli_parser, get_standard_logger_from_args, read_adjacency_groups_from_file, \
     read_segments_from_file, \
     extract_scnt_from_segments, extract_scnb_from_segments, read_scnb_from_file, get_full_path, write_scnt_to_file, EXTERNAL_NA_ID, FALSE_POSITIVE, remove_cn_data_from_segments, \
