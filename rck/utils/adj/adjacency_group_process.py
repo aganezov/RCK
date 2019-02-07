@@ -2,9 +2,8 @@ from collections import defaultdict
 
 import networkx as nx
 
-from core.io import EXTERNAL_NA_ID
 from rck.core.structures import AdjacencyGroup, AdjacencyGroupType
-from rck.core.io import AG_LABELING
+from rck.core.io import AG_LABELING, EXTERNAL_NA_ID
 
 
 def refine_labeling_groups_old(adj_groups, gid_suffix="", retain_source_gids=False, iag=None):
