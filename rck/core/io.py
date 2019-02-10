@@ -977,7 +977,7 @@ def write_adjacency_groups_to_destination(destination, adjacency_groups, separat
     for ag in adjacency_groups:
         data = {}
         data[GID] = ag.gid
-        data[AIDS] = aids_separator.join(sorted(map(str, ag.adjacencies_ids)))
+        data[AIDS] = aids_separator.join(map(str, ag.adjacencies_ids))
         extra_strings = ["{ag_type_string}={ag_type}".format(ag_type_string=AG_TYPE, ag_type=ag.group_type.value)]
         if extra_description_is_all(extra=extra):
             for key, value in ag.extra.items():
