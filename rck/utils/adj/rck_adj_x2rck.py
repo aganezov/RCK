@@ -3,7 +3,6 @@ import argparse
 import sys
 import os
 
-from core.io import read_adjacencies_from_file, get_full_path
 
 current_file_level = 3
 current_dir = os.path.dirname(os.path.realpath(__file__))
@@ -12,7 +11,7 @@ for _ in range(current_file_level):
 sys.path.append(current_dir)
 
 import rck
-from rck.core.io import get_logging_cli_parser, get_standard_logger_from_args
+from rck.core.io import get_logging_cli_parser, get_standard_logger_from_args, read_adjacencies_from_file, get_full_path
 from rck.utils.adj.convert import *
 from rck.utils.adj.process import filter_adjacencies_by_chromosomal_regions, get_shared_nas_parser, processed_gundem2015_adjacencies, get_chromosome_strip_parser
 
