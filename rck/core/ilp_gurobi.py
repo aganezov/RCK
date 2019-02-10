@@ -468,7 +468,7 @@ class OptModelMultiClone(object):
             positions = []
             for aid, index in zip(aids, indexes):
                 adjacency = self.hapl_adjacencies_by_external_ids[aid]
-                position = adjacency.position1 if indexes == 0 else adjacency.position2
+                position = adjacency.position1 if index == 0 else adjacency.position2
                 positions.append(position)
             group_vars = []
             for haplotype in [Haplotype.A, Haplotype.B]:
