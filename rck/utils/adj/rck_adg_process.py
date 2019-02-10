@@ -12,9 +12,9 @@ sys.path.append(current_dir)
 
 import rck
 from rck.core.io import get_logging_cli_parser, get_standard_logger_from_args, stream_adjacency_groups_from_source, write_adjacency_groups_to_destination, \
-    read_adjacency_groups_from_source
+    read_adjacency_groups_from_source, read_adjacencies_from_source
 from rck.core.structures import AdjacencyGroupType
-from rck.utils.adj.adjacency_group_process import refined_labeling_groups
+from rck.utils.adj.adjacency_group_process import refined_labeling_groups, projected_groups
 
 
 def main():
@@ -51,6 +51,20 @@ def main():
     refine_parser.add_argument("--o-aids-separator", default=",")
     refine_parser.add_argument("--o-extra-separator", default=";")
     ###
+    project_parser = subparsers.add_parser("project", parents=[cli_logging_parser])
+    project_parser.add_argument("rck_adg", type=argparse.FileType("rt"), default=sys.stdin)
+    project_parser.add_argument("--i-separator", default="\t")
+    project_parser.add_argument("--i-extra-separator", default=";")
+    project_parser.add_argument("--i-aids-separator", default=",")
+    project_parser.add_argument("--adjacencies", required=True, type=argparse.FileType("rt"))
+    project_parser.add_argument("--adj-separator", default="\t")
+    project_parser.add_argument("--adj-extra-separator", default=";")
+    project_parser.add_argument("--gid-suffix", default="projected")
+    project_parser.add_argument("-o", "--output", type=argparse.FileType("wt"), default=sys.stdout)
+    project_parser.add_argument("--o-separator", default="\t")
+    project_parser.add_argument("--o-aids-separator", default=",")
+    project_parser.add_argument("--o-extra-separator", default=";")
+    ###
     args = parser.parse_args()
     logger = get_standard_logger_from_args(args=args, program_name="RCK-UTILS-ADJ-GROUPS-process")
     if args.command == "cat":
@@ -77,15 +91,27 @@ def main():
         refined_molecule_groups = molecule_groups
         logger.info("A total of {cnt} refined molecule adjacency groups remains".format(cnt=len(refined_molecule_groups)))
         logger.info("Refining labeling adjacency groups")
-        refined_labeling_groups = refined_labeling_groups(adj_groups=labeling_groups, gid_suffix="" if len(args.gid_suffix) == 0 else args.gid_suffix + "-L",
-                                                          retain_source_gids=True)
-        logger.info("A total of {cnt} refined labeling adjacency groups remains".format(cnt=len(refined_labeling_groups)))
+        r_labeling_groups = refined_labeling_groups(adj_groups=labeling_groups, gid_suffix="" if len(args.gid_suffix) == 0 else args.gid_suffix + "-L",
+                                                    retain_source_gids=True)
+        logger.info("A total of {cnt} refined labeling adjacency groups remains".format(cnt=len(r_labeling_groups)))
         logger.info("Refining general adjacency groups")
         refined_general_groups = general_groups
         logger.info("A total of {cnt} refined labeling general adjacency groups remains".format(cnt=len(refined_general_groups)))
-        adj_groups = itertools.chain(refined_molecule_groups, refined_labeling_groups, refined_general_groups)
+        adj_groups = itertools.chain(refined_molecule_groups, r_labeling_groups, refined_general_groups)
         logger.info("Writing refined adjacency groups to {file}".format(file=args.output))
         write_adjacency_groups_to_destination(destination=args.output, adjacency_groups=adj_groups, separator=args.o_separator, aids_separator=args.o_aids_separator)
+    elif args.command == "project":
+        logger.info("Projecting input adjacency groups based on input adjacencies")
+        logger.info("Reading adjacency groups from {file}".format(file=args.rck_adg))
+        adg_groups = read_adjacency_groups_from_source(source=args.rck_adg, separator=args.i_separator, extra_separator=args.i_extra_separator,
+                                                       aids_separator=args.i_aids_separator)
+        logger.info("A total of {cnt} adjacency gorups has been read".format(cnt=len(adg_groups)))
+        adjacencies = read_adjacencies_from_source(source=args.adjacencies, separator=args.adj_separator, extra_separator=args.adj_extra_separator)
+        p_groups = projected_groups(groups=adg_groups, adjacencies=adjacencies, gid_suffix=args.gid_suffix)
+        logger.info("A total of {cnt} projected groups remained".format(cnt=len(p_groups)))
+        logger.info("Writing projected adjacency groups to {file}".format(file=args.output))
+        write_adjacency_groups_to_destination(destination=args.output, adjacency_groups=p_groups, separator=args.o_separator,
+                                              aids_separator=args.o_aids_separator, extra_separator=args.o_extra_separator)
 
 
 if __name__ == "__main__":

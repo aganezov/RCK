@@ -22,6 +22,7 @@ from rck.core.structures import get_segments_for_fragments_ids_dict, get_ref_tel
     refined_scnb, refined_scnt_with_adjacencies_and_telomeres, extract_spanned_extremities, SCNBoundariesStrategies, LengthSpreadRelationships, AdjacencyType, AdjacencyGroupType, \
     Phasing, Haplotype, CNBoundaries, AdjacencyCopyNumberProfile, SegmentCopyNumberProfile
 from rck.core.graph import construct_hiag_inflate_from_haploid_data, IntervalAdjacencyGraph
+from rck.utils.karyotype.analysis import adjacency_groups_labeling_violations
 
 
 def main():
@@ -125,6 +126,7 @@ def main():
     post_group.add_argument("--post-check-adj-groups", action="store_true", dest="post_check_adj_groups")
     post_group.add_argument("--post-check-adj-groups-m", action="store_true", dest="post_check_adj_groups_m")
     post_group.add_argument("--post-check-adj-groups-n", action="store_true", dest="post_check_adj_groups_n")
+    post_group.add_argument("--post-check-adj-groups-l", action="store_true", dest="post_check_adj_groups_l")
     post_group.add_argument("--post-check-nas-fp", action="store_true", dest="post_check_nas_fp")
     ###
     args = parser.parse_args()
@@ -689,6 +691,18 @@ def main():
             logger.info("Everything is OK for all {good}/{all} general adjacency groups.".format(good=general_groups_fine_cnt, all=len(adjacency_groups)))
         else:
             logger.error("Something went WRONG! In some general adjacency groups (see above) inferred FP was greater then the maximum input FP.")
+
+    if args.post_check_all or args.post_check_adj_groups or args.post_check_adj_groups_l:
+        logger.info("Performing post-inference check on adjacency groups (labeling type)")
+        labeling_groups = [ag for ag in adjacency_groups if ag.group_type == AdjacencyGroupType.LABELING]
+        labeling_groups_fine_cnt = 0
+        logger.info("There were {cnt} labeling adjacency groups in the input.".format(cnt=len(labeling_groups)))
+        labeling_groups_violations = adjacency_groups_labeling_violations(groups=labeling_groups, acnt=acnt)
+        if labeling_groups_fine_cnt == len(labeling_groups):
+            logger.info("Everything is OK for all {good}/{all} labeling adjacency groups.".format(good=labeling_groups_fine_cnt, all=len(labeling_groups)))
+        else:
+            logger.error(", ".join(str(ag.gid) for ag in labeling_groups_violations))
+            logger.error("Something went WRONG! In some labeling adjacency groups (see above) inferred FP was greater then the maximum input FP.")
 
     if args.post_check_all or args.post_check_nas_fp:
         logger.info("Performing post-inference check on overall novel adjacencies false positive parameter")

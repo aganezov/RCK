@@ -1,4 +1,5 @@
 from collections import defaultdict
+from copy import deepcopy
 
 import networkx as nx
 
@@ -159,4 +160,31 @@ def refined_labeling_groups(adj_groups, iag=None, adjacencies=None, gid_suffix="
         ag = AdjacencyGroup(gid=gid, aids=aids, group_type=AdjacencyGroupType.LABELING, extra=extra)
         result.append(ag)
         cnt += 1
+    return result
+
+
+def projected_groups(groups, adjacencies, adjacencies_by_external_ids=None, gid_suffix=""):
+    if adjacencies_by_external_ids is None:
+        adjacencies_by_external_ids = {adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased): adj for adj in adjacencies}
+    result = []
+    for group in groups:
+        projected = [aid in adjacencies_by_external_ids for aid in group.adjacencies_ids]
+        aids = [aid for aid, allowed in zip(group.adjacencies_ids, projected) if allowed]
+        if len(aids) == 0:
+            continue
+        if group.adjacencies is not None:
+            adjacencies = [adj for adj, allowed in zip(group.adjacencies, projected) if allowed]
+        else:
+            adjacencies = None
+        ag = deepcopy(group)
+        ag.adjacencies_ids = aids
+        ag.adjacencies = adjacencies
+        if group.group_type == AdjacencyGroupType.LABELING:
+            if len(aids) < 2:
+                continue
+            labeling = [index for index, allowed in zip(group.extra[AG_LABELING], projected) if allowed]
+            ag.extra[AG_LABELING] = labeling
+        if len(gid_suffix) > 0:
+            ag.gid += "_" + gid_suffix
+        result.append(ag)
     return result
