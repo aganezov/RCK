@@ -379,7 +379,7 @@ class IntervalAdjacencyGraph(object):
             for v_, v__, v_key, v_data in self.graph.edges(nbunch=v, data=True, keys=True):
                 if not isinstance(v_data["object"], Adjacency):
                     continue
-                if u_data["object"] == v_data["object"]:
+                if u_data["object"] == v_data["object"] and u_data["object"].adjacency_type == v_data["object"].adjacency_type:
                     assert v_key == u_key
                     edges_to_remove.append((u, v, v_key))
         for u, v, key in edges_to_remove:
