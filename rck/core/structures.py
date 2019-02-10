@@ -435,7 +435,11 @@ class Segment(object):
 
     @property
     def length_100(self):
-        return int(self.length_1000 * 10)
+        return int(math.ceil(int(self.end_position.coordinate - self.start_position.coordinate) / 100.0))
+
+    @property
+    def length_10(self):
+        return int(math.ceil(int(self.end_position.coordinate - self.start_position.coordinate) / 10.0))
 
     @property
     def start_coordinate(self):
@@ -974,9 +978,10 @@ class AdjacencyGroup(object):
     def stable_id(self):
         return "{gid}:{g_type}:<{aids}>".format(gid=self.gid, g_type=str(self.group_type.value), aids=",".join(self.adjacencies_ids))
 
-    def populate_adjacencies_via_ids(self, source):
+    def populate_adjacencies_via_ids(self, source, source_by_ids=None):
         from rck.core.io import EXTERNAL_NA_ID
-        source_by_ids = {adj.extra.get(EXTERNAL_NA_ID, adj.idx): adj for adj in source}
+        if source_by_ids is None:
+            source_by_ids = {adj.extra.get(EXTERNAL_NA_ID, adj.idx): adj for adj in source}
         for aid in self.adjacencies_ids:
             if aid not in source_by_ids:
                 raise ValueError("Trying to populate adjacencies in adjacency group {gid}, but adjacency {aid} (reference in the group) is missing from available adjacencies"

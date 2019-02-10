@@ -133,7 +133,8 @@ def main():
                 adjacencies.append(adj)
                 processed_ids.add(aid)
             adjacencies = adjacencies
-        processed_adjacencies = list(adjacencies)
+        write_adjacencies_to_destination(destination=args.rck_adj_file, adjacencies=adjacencies, extra=extra, sort_adjacencies=args.sort)
+        exit(0)
     elif args.command == "filter":
         logger.info("Filtering input adjacencies from following sources {sources}".format(sources=",".join(map(str, args.rck_adj))))
         adjacencies = itertools.chain(*(stream_adjacencies_from_source(source=rck_adj_source) for rck_adj_source in args.rck_adj))
