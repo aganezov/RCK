@@ -60,9 +60,13 @@ class IntervalAdjacencyGraph(object):
             raise ValueError()
         if v not in self.graph:
             raise ValueError()
-        if self.has_adjacency_edge(edge=(u, v), sort=True):   # can not have parallel adjacency edges. Only possible parallel edges are pairs of segment/adjacency ones
-            return
         obj = self.get_adjacency_object_from_adjacency(adjacency=adjacency, copy=copy_adjacency)
+        for adj_edge_w_data in self.adjacency_edges(nbunch=u):
+            adj_u, adj_v, adj_data = adj_edge_w_data
+            if {adj_u, adj_v} == {u, v} and adj_data["object"].adjacency_type == obj.adjacency_type:
+                return
+        # if self.has_adjacency_edge(edge=(u, v), sort=True):   # can not have parallel adjacency edges. Only possible parallel edges are pairs of segment/adjacency ones
+        #     return
         self.graph.add_edge(u, v, object=obj)
 
     @staticmethod
