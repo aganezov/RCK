@@ -688,7 +688,7 @@ def main():
                              "".format(gid=group.gid, inferred=inferred_fp, group_fp=group_fp))
                 general_groups_fine_cnt += 1
         if general_groups_fine_cnt == len(general_groups):
-            logger.info("Everything is OK for all {good}/{all} general adjacency groups.".format(good=general_groups_fine_cnt, all=len(adjacency_groups)))
+            logger.info("Everything is OK for all {good}/{all} general adjacency groups.".format(good=general_groups_fine_cnt, all=len(general_groups)))
         else:
             logger.error("Something went WRONG! In some general adjacency groups (see above) inferred FP was greater then the maximum input FP.")
 
