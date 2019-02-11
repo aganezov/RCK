@@ -184,7 +184,7 @@ def projected_groups(groups, adjacencies, adjacencies_by_external_ids=None, gid_
                 continue
             labeling = [index for index, allowed in zip(group.extra[AG_LABELING], projected) if allowed]
             ag.extra[AG_LABELING] = labeling
-        if len(gid_suffix) > 0:
+        if not all(projected) and len(gid_suffix) > 0 and group.group_type != AdjacencyGroupType.GENERAL:
             ag.gid += "_" + gid_suffix
         result.append(ag)
     return result

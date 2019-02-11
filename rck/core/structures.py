@@ -550,7 +550,7 @@ class Adjacency(object):
         p1_id, p2_id = self.position1.stable_id_non_hap, self.position2.stable_id_non_hap
         if self.position2.less_than__non_hap(self.position1):
             p1_id, p2_id = p2_id, p1_id
-        return "[{p1}]-[{p2}]".format(p1=p1_id, p2=p2_id)
+        return "[{p1}]-[{p2}]{t}".format(p1=p1_id, p2=p2_id, t=self.adjacency_type.value)
 
     @property
     def id_non_phased(self):

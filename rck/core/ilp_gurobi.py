@@ -1,7 +1,6 @@
 import gurobi as g
 import networkx as nx
 
-
 from rck.core.graph import IntervalAdjacencyGraph
 from rck.core.io import FALSE_POSITIVE, EXTERNAL_NA_ID, AG_LABELING
 from rck.core.structures import Phasing, AdjacencyType, Haplotype, get_aabb_for_ra, get_abba_for_na_and_position
@@ -24,6 +23,127 @@ DEFAULT_GROUP_N_FP = "DEFAULT_GROUP_N_FP"
 SEGMENT_LENGTH_ATTRIBUTE = "SEGMENT_LENGTH_ATTRIBUTE"
 
 
+def merge_variables_from_presolve(*variables_dicts, result=None):
+    if result is None:
+        result = {}
+    for variables_dict in variables_dicts:
+        if FRAGMENT_ALLELE in variables_dicts:
+            if FRAGMENT_ALLELE not in result:
+                result[FRAGMENT_ALLELE] = {}
+            for key, value in variables_dict[FRAGMENT_ALLELE].items():
+                result[key] = value.X
+        if SEGMENT_COPY_NUMBER in variables_dict:
+            if SEGMENT_COPY_NUMBER not in result:
+                result[SEGMENT_COPY_NUMBER] = {}
+            result_dict = result[SEGMENT_COPY_NUMBER]
+            for clone_id, value in variables_dict[SEGMENT_COPY_NUMBER].items():
+                if clone_id not in result_dict:
+                    result_dict[clone_id] = {}
+                for sid, clone_specific_dict in value.items():
+                    result_dict[clone_id][sid] = {
+                        Haplotype.A: clone_specific_dict[Haplotype.A].X,
+                        Haplotype.B: clone_specific_dict[Haplotype.B].X
+                    }
+        if YR in variables_dict:
+            if YR not in result:
+                result[YR] = {}
+            result_dict = result[YR]
+            for clone_id, value in variables_dict[YR].items():
+                if clone_id not in result_dict:
+                    result_dict[clone_id] = {}
+                for aid, clone_specific_dict in value.items():
+                    result_dict[clone_id][aid] = {
+                        Phasing.AA: clone_specific_dict[Phasing.AA].X,
+                        Phasing.AB: clone_specific_dict[Phasing.AB].X,
+                        Phasing.BA: clone_specific_dict[Phasing.BA].X,
+                        Phasing.BB: clone_specific_dict[Phasing.BB].X
+                    }
+        if YN in variables_dict:
+            if YN not in result:
+                result[YN] = {}
+            result_dict = result[YN]
+            for clone_id, value in variables_dict[YN].items():
+                if clone_id not in result_dict:
+                    result_dict[clone_id] = {}
+                for aid, cs_value in value.items():
+                    result_dict[clone_id][aid] = cs_value.X
+        if P in variables_dict:
+            if P not in result:
+                result[P] = {}
+            result_dict = result[P]
+            for clone_id, value in variables_dict[P].items():
+                if clone_id not in result_dict:
+                    result_dict[clone_id] = {}
+                for aid, clone_specific_dict in value.items():
+                    result_dict[clone_id][aid] = {
+                        Phasing.AA: clone_specific_dict[Phasing.AA].X,
+                        Phasing.AB: clone_specific_dict[Phasing.AB].X,
+                        Phasing.BA: clone_specific_dict[Phasing.BA].X,
+                        Phasing.BB: clone_specific_dict[Phasing.BB].X
+                    }
+        if ADJ_GROUPS_M in variables_dict:
+            if ADJ_GROUPS_M not in result:
+                result[ADJ_GROUPS_M] = {}
+            result_dict = result[ADJ_GROUPS_M]
+            for clone_id, value in variables_dict[ADJ_GROUPS_M].items():
+                if clone_id not in result_dict:
+                    result_dict[clone_id] = {}
+                for gid, cs_value in value.items():
+                    result_dict[clone_id][gid] = cs_value.X
+        if ADJ_GROUPS_L in variables_dict:
+            if ADJ_GROUPS_L not in result:
+                result[ADJ_GROUPS_L] = {}
+            result_dict = result[ADJ_GROUPS_L]
+            for gid, value in variables_dict[ADJ_GROUPS_L].items():
+                result_dict[gid] = {
+                    Haplotype.A: value[Haplotype.A].X,
+                    Haplotype.B: value[Haplotype.B].X
+                }
+        if DELTA in variables_dict:
+            if DELTA not in result:
+                result[DELTA] = {}
+            result_dict = result[DELTA]
+            for clone_id, value in variables_dict[DELTA].items():
+                if clone_id not in result_dict:
+                    result_dict[clone_id] = {}
+                for sid, cs_value in value.items():
+                    result_dict[clone_id][sid] = {
+                        Haplotype.A: cs_value[Haplotype.A].X,
+                        Haplotype.B: cs_value[Haplotype.B].X
+                    }
+        if PROD in variables_dict:
+            if PROD not in result:
+                result[PROD] = {}
+            result_dict = result[PROD]
+            if PY in variables_dict[PROD]:
+                if PY not in result_dict:
+                    result_dict[PY] = {}
+                result_dict = result_dict[PY]
+                for clone_id, value in variables_dict[PROD][PY].items():
+                    if clone_id not in result_dict:
+                        result_dict[clone_id] = {}
+                    for aid, cs_value in value.items():
+                        result_dict[clone_id][aid] = {
+                            Phasing.AA: cs_value[Phasing.AA].X,
+                            Phasing.AB: cs_value[Phasing.AB].X,
+                            Phasing.BA: cs_value[Phasing.BA].X,
+                            Phasing.BB: cs_value[Phasing.BB].X,
+                        }
+            result_dict = result[PROD]
+            if PP in variables_dict[PROD]:
+                if PP not in result_dict:
+                    result_dict[PP] = {}
+                result_dict = result_dict[PP]
+                for aid, value in variables_dict[PROD][PP].items():
+                    result_dict[aid] = {
+                        Phasing.AA: value[Phasing.AA].X,
+                        Phasing.AB: value[Phasing.AB].X,
+                        Phasing.BA: value[Phasing.BA].X,
+                        Phasing.BB: value[Phasing.BB].X
+                    }
+    return result
+
+
 class OptModelMultiClone(object):
     def __init__(self,
                  hapl_segments,
@@ -34,6 +154,7 @@ class OptModelMultiClone(object):
                  hapl_adjacencies_groups=None,
                  hapl_segments_to_fragments=None,
                  hapl_nov_adjacencies_fp=0.0,
+                 starting_vars=None,
                  extra=None):
         self.scnb = scnb
         self.hapl_segments = hapl_segments
@@ -47,6 +168,7 @@ class OptModelMultiClone(object):
         self.hapl_segments_to_fragments = hapl_segments_to_fragments
         self.clone_ids = sorted(self.scnt.keys())
         self.extra = extra if extra is not None else {}
+        self.starting_vars = starting_vars
         self.iag = IntervalAdjacencyGraph(segments=self.hapl_segments, adjacencies=self.hapl_adjacencies)
         self.iag.build_graph()
         self.variables = self.populate_variables_dict()
@@ -155,7 +277,10 @@ class OptModelMultiClone(object):
         # Binary variables that define whether inferred haplotype copy number pairing for a given segment/fragments in synch (1) on the allele-specific input order, or flips it (0)
         ###
         for fid in list(self.variables[FRAGMENT_ALLELE].keys()):
-            self.variables[FRAGMENT_ALLELE][fid] = self.gm.addVar(vtype=g.GRB.BINARY, name="b_{{fid}}".format(fid=str(fid)))
+            var = self.gm.addVar(vtype=g.GRB.BINARY, name="b_{{fid}}".format(fid=str(fid)))
+            if self.starting_vars is not None and FRAGMENT_ALLELE in self.starting_vars and fid in self.starting_vars[FRAGMENT_ALLELE]:
+                var.start = self.starting_vars[FRAGMENT_ALLELE][fid]
+            self.variables[FRAGMENT_ALLELE][fid] = var
         ######
 
         ###
@@ -165,33 +290,48 @@ class OptModelMultiClone(object):
         for clone_id in self.clone_ids:
             for aid in list(self.variables[YR][clone_id].keys()):
                 for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]:
-                    self.variables[YR][clone_id][aid][ph] = self.gm.addVar(lb=1, vtype=g.GRB.INTEGER, name="N'_{{r,{cid},{aid},{phas}}}".format(cid=str(clone_id),
-                                                                                                                                                aid=str(aid),
-                                                                                                                                                phas=str(ph)))
+                    var = self.gm.addVar(lb=1, vtype=g.GRB.INTEGER, name="N'_{{r,{cid},{aid},{phas}}}".format(cid=str(clone_id), aid=str(aid), phas=str(ph)))
+                    if self.starting_vars is not None and \
+                            YR in self.starting_vars and clone_id in self.starting_vars[YR] and aid in self.starting_vars[YR][clone_id] and \
+                            ph in self.starting_vars[YR][clone_id][aid]:
+                        var.start = self.starting_vars[YR][clone_id][aid][ph]
+                    self.variables[YR][clone_id][aid][ph] = var
         ######
 
         ###
         # Integer segment copy numbers, bounded by lower and upper bounds, provided as part of the input
         ###
+        start_cnt = 0
         for clone_id in self.clone_ids:
             for sid in list(self.variables[SEGMENT_COPY_NUMBER][clone_id].keys()):
                 min_lower = min([self.scnb[clone_id].get_cnb(sid=sid, hap=h, boundary_type=CNBoundaries.LOWER) for h in [Haplotype.A, Haplotype.B]])
                 max_upper = max([self.scnb[clone_id].get_cnb(sid=sid, hap=h, boundary_type=CNBoundaries.UPPER) for h in [Haplotype.A, Haplotype.B]])
                 for h in [Haplotype.A, Haplotype.B]:
-                    self.variables[SEGMENT_COPY_NUMBER][clone_id][sid][h] = self.gm.addVar(lb=min_lower, ub=max_upper, vtype=g.GRB.INTEGER,
-                                                                                           name="c_{{{cid},{sid},{hap}}}".format(cid=str(clone_id),
-                                                                                                                                 sid=str(sid),
-                                                                                                                                 hap=str(h)))
+                    var = self.gm.addVar(lb=min_lower, ub=max_upper, vtype=g.GRB.INTEGER, name="c_{{{cid},{sid},{hap}}}".format(cid=str(clone_id), sid=str(sid), hap=str(h)))
+                    if self.starting_vars is not None and \
+                            SEGMENT_COPY_NUMBER in self.starting_vars and clone_id in self.starting_vars[SEGMENT_COPY_NUMBER] and sid in self.starting_vars[SEGMENT_COPY_NUMBER][
+                        clone_id] and \
+                            h in self.starting_vars[SEGMENT_COPY_NUMBER][clone_id][sid]:
+                        var.start = self.starting_vars[SEGMENT_COPY_NUMBER][clone_id][sid][h]
+                        start_cnt += 1
+                    self.variables[SEGMENT_COPY_NUMBER][clone_id][sid][h] = var
+        # print("segment start cnt = {cnt}".format(cnt=start_cnt))
         ######
 
         ###
         # Integer copy number of a novel adjacency (single phased realization). Every unphased novel adjacency can have at most one phased realization, thus 1 variable.
         #   lower bound is set at 1, as absence (i.e., copy number 0) is achieved via a binary indicator variable.
         ###
+        start_cnt = 0
         for clone_id in self.clone_ids:
             for aid in list(self.variables[YN][clone_id].keys()):
-                self.variables[YN][clone_id][aid] = self.gm.addVar(lb=1, vtype=g.GRB.INTEGER, name="N'_{{n,{cid},{aid}}}".format(cid=str(clone_id),
-                                                                                                                                 aid=str(aid)))
+                var = self.gm.addVar(lb=1, vtype=g.GRB.INTEGER, name="N'_{{n,{cid},{aid}}}".format(cid=str(clone_id), aid=str(aid)))
+                if self.starting_vars is not None and \
+                        YN in self.starting_vars and clone_id in self.starting_vars[YN] and aid in self.starting_vars[YN][clone_id]:
+                    var.start = self.starting_vars[YN][clone_id][aid]
+                    start_cnt += 1
+                self.variables[YN][clone_id][aid] = var
+        # print("yn start cnt = {cnt}".format(cnt=start_cnt))
         ######
 
         ###
@@ -200,59 +340,87 @@ class OptModelMultiClone(object):
         for clone_id in self.clone_ids:
             for aid in list(self.variables[P][clone_id].keys()):
                 for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]:
-                    self.variables[P][clone_id][aid][ph] = self.gm.addVar(vtype=g.GRB.BINARY, name="p_{{a,{cid},{aid},{phas}}}".format(cid=str(clone_id),
-                                                                                                                                       aid=str(aid),
-                                                                                                                                       phas=str(ph)))
+                    var = self.gm.addVar(vtype=g.GRB.BINARY, name="p_{{a,{cid},{aid},{phas}}}".format(cid=str(clone_id), aid=str(aid), phas=str(ph)))
+                    if self.starting_vars is not None and \
+                            P in self.starting_vars and clone_id in self.starting_vars[P] and aid in self.starting_vars[P][clone_id] and \
+                            ph in self.starting_vars[P][clone_id][aid]:
+                        var.start = self.starting_vars[P][clone_id][aid][ph]
+                    self.variables[P][clone_id][aid][ph] = var
         ######
 
         ###
         # Binary indicator presence variable that determines whether a group of adjacencies is present in a given clone, or not
         ###
+        start_cnt = 0
         for clone_id in self.clone_ids:
             for gid in list(self.variables[ADJ_GROUPS_M][clone_id].keys()):
-                self.variables[ADJ_GROUPS_M][clone_id][gid] = self.gm.addVar(vtype=g.GRB.BINARY, name="p_{{u,{cid},{gid}}}".format(cid=str(clone_id),
-                                                                                                                                   gid=str(gid)))
+                var = self.gm.addVar(vtype=g.GRB.BINARY, name="p_{{u,{cid},{gid}}}".format(cid=str(clone_id), gid=str(gid)))
+                if self.starting_vars is not None and \
+                        ADJ_GROUPS_M in self.starting_vars and clone_id in self.starting_vars[ADJ_GROUPS_M] and gid in self.starting_vars[ADJ_GROUPS_M][clone_id]:
+                    var.start = self.starting_vars[ADJ_GROUPS_M][clone_id][gid]
+                    start_cnt += 1
+                self.variables[ADJ_GROUPS_M][clone_id][gid] = var
+        # print("adj group m start cnt = {cnt}".format(cnt=start_cnt))
         ######
 
         ###
         # Binary indicator presence variable that determines whether any of the adjacencies in the given group are present on respective haplotype
         ###
+        start_cnt = 0
         for gid in list(self.variables[ADJ_GROUPS_L].keys()):
             for haplotype in [Haplotype.A, Haplotype.B]:
-                self.variables[ADJ_GROUPS_L][gid][haplotype] = self.gm.addVar(vtype=g.GRB.BINARY, name="p_{{u,{gid},{hap}}}".format(gid=str(gid),
-                                                                                                                                    hap=str(haplotype.value)))
-
+                var = self.gm.addVar(vtype=g.GRB.BINARY, name="p_{{u,{gid},{hap}}}".format(gid=str(gid), hap=str(haplotype.value)))
+                if self.starting_vars is not None and \
+                        ADJ_GROUPS_L in self.starting_vars and gid in self.starting_vars[ADJ_GROUPS_L] and haplotype in self.starting_vars[ADJ_GROUPS_L][gid]:
+                    var.start = self.starting_vars[ADJ_GROUPS_L][gid][haplotype]
+                    start_cnt += 1
+                self.variables[ADJ_GROUPS_L][gid][haplotype] = var
+        # print("adj group l start cnt = {cnt}".format(cnt=start_cnt))
         ###
         # Internal variable that encodes the difference between the inferred segment copy numbers and the original values
         ###
         for clone_id in self.clone_ids:
             for sid in list(self.variables[DELTA][clone_id].keys()):
                 for h in [Haplotype.A, Haplotype.B]:
-                    self.variables[DELTA][clone_id][sid][h] = self.gm.addVar(lb=0, vtype=g.GRB.INTEGER, name="delta_{{{cid},{sid},{hap}}}".format(cid=str(clone_id),
-                                                                                                                                                  sid=str(sid),
-                                                                                                                                                  hap=str(h)))
+                    var = self.gm.addVar(lb=0, vtype=g.GRB.INTEGER, name="delta_{{{cid},{sid},{hap}}}".format(cid=str(clone_id), sid=str(sid), hap=str(h)))
+                    if self.starting_vars is not None and \
+                            DELTA in self.starting_vars and clone_id in self.starting_vars[DELTA] and sid in self.starting_vars[DELTA][clone_id] and \
+                            h in self.starting_vars[DELTA][clone_id][sid]:
+                        var.start = self.starting_vars[DELTA][clone_id][sid][h]
+                    self.variables[DELTA][clone_id][sid][h] = var
         ######
 
         ###
         # Internal integer variable encoding internal copy number for all phased realizations of the adjacencies. Used in conjunction with respective binary variable
         #   and bigM notation technique to encode the true copy number (i.e., the result)
         ###
+        start_cnt = 0
         for clone_id in self.clone_ids:
             for aid in list(self.variables[PROD][PY][clone_id].keys()):
                 for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]:
-                    self.variables[PROD][PY][clone_id][aid][ph] = self.gm.addVar(lb=0, vtype=g.GRB.INTEGER,
-                                                                                 name="N_{{{cid},{aid},{phas}}}".format(cid=str(clone_id),
-                                                                                                                        aid=str(aid),
-                                                                                                                        phas=str(ph)))
+                    var = self.gm.addVar(lb=0, vtype=g.GRB.INTEGER, name="N_{{{cid},{aid},{phas}}}".format(cid=str(clone_id), aid=str(aid), phas=str(ph)))
+                    if self.starting_vars is not None and \
+                            PROD in self.starting_vars and PY in self.starting_vars[PROD] and clone_id in self.starting_vars[PROD][PY] and \
+                            aid in self.starting_vars[PROD][PY][clone_id] and ph in self.starting_vars[PROD][PY][clone_id][aid]:
+                        var.start = self.starting_vars[PROD][PY][clone_id][aid][ph]
+                        start_cnt += 1
+                    self.variables[PROD][PY][clone_id][aid][ph] = var
+        # print("prod py start cnt = {cnt}".format(cnt=start_cnt))
         ######
 
         ###
         # Binary variables used for enforcing phasing constraints across clones
         ###
+        start_cnt = 0
         for aid in list(self.variables[PROD][PP].keys()):
             for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]:
-                self.variables[PROD][PP][aid][ph] = self.gm.addVar(vtype=g.GRB.BINARY, name="p_{{a,{aid},{phas}}}".format(aid=str(aid),
-                                                                                                                          phas=str(ph)))
+                var = self.gm.addVar(vtype=g.GRB.BINARY, name="p_{{a,{aid},{phas}}}".format(aid=str(aid), phas=str(ph)))
+                if self.starting_vars is not None and \
+                        PROD in self.starting_vars and PP in self.starting_vars[PROD] and aid in self.starting_vars[PROD][PP] and ph in self.starting_vars[PROD][PP][aid]:
+                    var.start = self.starting_vars[PROD][PP][aid][ph]
+                    start_cnt += 1
+                self.variables[PROD][PP][aid][ph] = var
+        # print("prod pp start cnt = {cnt}".format(cnt=start_cnt))
 
     def define_constraints(self):
         self.define_segment_copy_number_boundary_constraints()
@@ -480,7 +648,7 @@ class OptModelMultiClone(object):
                         u, v, data = na_w_data
                         na = data["object"]
                         aid = na.stable_id_non_phased
-                        positions_adjacency_variables.append(self.variables[PROD][PP][aid][get_aabb_for_ra(haplotype=Haplotype.A)])
+                        positions_adjacency_variables.append(self.variables[PROD][PP][aid][get_aabb_for_ra(haplotype=haplotype)])
                         positions_adjacency_variables.append(self.variables[PROD][PP][aid][get_abba_for_na_and_position(novel_adjacency=na,
                                                                                                                         position=position, haplotype=haplotype)])
                 self.gm.addGenConstrOr(group_var, positions_adjacency_variables, name="labeling_group-{{{gid},{hap}}}".format(gid=adj_group.gid,
