@@ -726,7 +726,7 @@ def main():
             input_hapl_telomers_ids = {p.stable_id_non_hap for p in telomeres}
             if inferred_hapl_telomeres_ids > input_hapl_telomers_ids:
                 logger.error("Something went WRONG! Following segments extremities, while not specified specified as possible telomere sites were inferred as such.")
-                logger.error(",".join(map(str, sorted(input_hapl_telomers_ids - input_hapl_telomers_ids))))
+                logger.error(",".join(map(str, sorted(inferred_hapl_telomeres_ids - input_hapl_telomers_ids))))
             else:
                 logger.info("Everything is OK! in clone {clone_id} all extremities have non-negative copy number excess, and inferred telomere sites concur with the input"
                             "".format(clone_id=clone_id))
@@ -791,7 +791,7 @@ def main():
         labeling_groups_fine_cnt = 0
         logger.info("There were {cnt} labeling adjacency groups in the input.".format(cnt=len(labeling_groups)))
         labeling_groups_violations = adjacency_groups_labeling_violations(groups=labeling_groups, acnt=acnt)
-        if labeling_groups_fine_cnt == len(labeling_groups):
+        if len(labeling_groups_violations) == 0:
             logger.info("Everything is OK for all {good}/{all} labeling adjacency groups.".format(good=labeling_groups_fine_cnt, all=len(labeling_groups)))
         else:
             logger.error(", ".join(str(ag.gid) for ag in labeling_groups_violations))
