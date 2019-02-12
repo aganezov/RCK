@@ -101,7 +101,7 @@ def main():
     ###
     run_group = parser.add_argument_group()
     run_group.add_argument("--no-run", action="store_false", dest="do_run")
-    run_group.add_argument("--run-presolve-nas-threshold", type=int, default=10000)
+    run_group.add_argument("--run-presolve-nas-threshold", type=int, default=5000)
     run_group.add_argument("--run-g-mip-gap", type=float, default=0.015)
     run_group.add_argument("--run-g-time-limit", type=int, default=28800)
     run_group.add_argument("--run-g-threads", type=int, default=4)
