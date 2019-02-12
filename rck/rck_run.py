@@ -101,7 +101,7 @@ def main():
     ###
     run_group = parser.add_argument_group()
     run_group.add_argument("--no-run", action="store_false", dest="do_run")
-    run_group.add_argument("--run-presolve-nas-threshold", type=int, default=5000)
+    run_group.add_argument("--run-presolve-nas-threshold", type=int, default=10000)
     run_group.add_argument("--run-g-mip-gap", type=float, default=0.015)
     run_group.add_argument("--run-g-time-limit", type=int, default=28800)
     run_group.add_argument("--run-g-threads", type=int, default=4)
@@ -592,6 +592,11 @@ def main():
     if solution_cnt == 0:
         logger.error("Inference was unsuccessful")
         exit(1)
+
+    # ilp_model.gm.write(os.path.join(output_dir), "gurobi.mps")
+    ilp_model.gm.write(os.path.join(output_dir), "gurobi.lp")
+    ilp_model.gm.write(os.path.join(output_dir), "gurobi.sol")
+
 
     logger.info("Gurobi finished execution with status {status}".format(status=status))
     logger.info("Extracting inferred diploid segment copy number data")

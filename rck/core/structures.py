@@ -568,7 +568,7 @@ class Adjacency(object):
             p1, p2 = p2, p1
         p1_id = Position.id_hap_string_from_elements(chrom=p1.chromosome, hap=phasing.value[0], strand=p1.strand, coord=p1.coordinate)
         p2_id = Position.id_hap_string_from_elements(chrom=p2.chromosome, hap=phasing.value[1], strand=p2.strand, coord=p2.coordinate)
-        return "[{p1}]-[{p2}]".format(p1=p1_id, p2=p2_id)
+        return "[{p1}]-[{p2}]{t}".format(p1=p1_id, p2=p2_id, t=self.adjacency_type.value)
 
     @property
     def id_phased(self):

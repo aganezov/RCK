@@ -1,6 +1,7 @@
 import argparse
 from collections import defaultdict
 
+from rck.core.graph import construct_hiag_inflate_from_haploid_data
 from rck.core.io import read_scnt_from_source, read_acnt_from_source, read_scnb_from_source, read_adjacency_groups_from_source, read_positions_from_source, get_logging_cli_parser, \
     get_standard_logger_from_args, EXTERNAL_NA_ID
 from rck.core.structures import get_ref_telomeres_from_segments, AdjacencyType, AdjacencyGroupType
@@ -105,6 +106,30 @@ def main():
                 logger.info("All general groups agree with input karyotype")
     else:
         logger.info("No information about adjacency groups were provided. Nothing to check.")
+
+    clone_ids = sorted(set(scnt.keys()) & set(acnt.keys()))
+    for clone_id in clone_ids:
+        logger.info("Checking balancing and telomeres for clone {clone_id}".format(clone_id=clone_id))
+        hiag = construct_hiag_inflate_from_haploid_data(hapl_segments=segments, hapl_adjacencies=adjacencies)
+        scnp = scnt[clone_id]
+        acnp = acnt[clone_id]
+        hiag.assign_copy_numbers_from_scn_profile(scn_profile=scnp)
+        hiag.assign_copy_numbers_from_acn_profile(acn_profile=acnp)
+        hiag.remove_edges_with_zero_cn()
+        logger.info("Checking that every vertex has a copy number excess >= 0.")
+        for node in hiag.nodes(data=False):
+            if hiag.node_imbalance(node=node) < 0:
+                logger.warning("Something went WRONG! On segment extremity {node} there is a negative copy number excess...".format(node=str(node)))
+        logger.info("Getting inferred telomeres.")
+        diploid_telomeres = hiag.get_telomeres()
+        inferred_hapl_telomeres_ids = {p.stable_id_non_hap for p in diploid_telomeres}
+        input_hapl_telomers_ids = {p.stable_id_non_hap for p in telomeres}
+        if inferred_hapl_telomeres_ids > input_hapl_telomers_ids:
+            logger.error("Something went WRONG! Following segments extremities, while not specified specified as possible telomere sites were inferred as such.")
+            logger.error(",".join(map(str, sorted(inferred_hapl_telomeres_ids - input_hapl_telomers_ids))))
+        else:
+            logger.info("Everything is OK! in clone {clone_id} all extremities have non-negative copy number excess, and inferred telomere sites concur with the input"
+                        "".format(clone_id=clone_id))
 
 
 if __name__ == "__main__":

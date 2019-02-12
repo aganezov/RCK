@@ -155,7 +155,7 @@ class IntervalAdjacencyGraph(object):
             exists = False
             for u_, u__, u_a_edge_data in self.adjacency_edges(nbunch=u, data=True, sort=True):
                 for v_, v__, v_a_edge_data in self.adjacency_edges(nbunch=v, data=True, sort=True):
-                    if u_a_edge_data["object"] == v_a_edge_data["object"]:
+                    if u_a_edge_data["object"] == v_a_edge_data["object"] and u_a_edge_data["object"].adjacency_type == v_a_edge_data["object"].adjacency_type:
                         exists = True
             return exists
         except ValueError:
@@ -366,7 +366,7 @@ class IntervalAdjacencyGraph(object):
         for u, v, key in edges_to_remove:
             self.graph.remove_edge(u=u, v=v, key=key)
 
-    def remove_adjacency_edge(self, u, v, silent=True):
+    def remove_adjacency_edge(self, u, v, adj_type=None, key=None, silent=True):
         has_edge = self.has_adjacency_edge_by_edge(edge=(u, v), sort=True)
         if not has_edge:
             if not silent:
@@ -379,7 +379,7 @@ class IntervalAdjacencyGraph(object):
             for v_, v__, v_key, v_data in self.graph.edges(nbunch=v, data=True, keys=True):
                 if not isinstance(v_data["object"], Adjacency):
                     continue
-                if u_data["object"] == v_data["object"] and u_data["object"].adjacency_type == v_data["object"].adjacency_type:
+                if u_data["object"] == v_data["object"] and u_data["object"].adjacency_type == v_data["object"].adjacency_type and u_data["object"].adjacency_type == adj_type:
                     assert v_key == u_key
                     edges_to_remove.append((u, v, v_key))
         for u, v, key in edges_to_remove:
@@ -419,7 +419,7 @@ class IntervalAdjacencyGraph(object):
                 adjacency_edges_to_remove.append((u, v))
                 # self.remove_adjacency_edge(u=u, v=v)
         for u, v in adjacency_edges_to_remove:
-            self.remove_adjacency_edge(u=u, v=v)
+            self.remove_adjacency_edge(u=u, v=v, adj_type=AdjacencyType.REFERENCE)
             if clear_nodes_after:
                 if self.graph.degree[u] == 0:
                     self.graph.remove_node(n=u)
@@ -436,7 +436,7 @@ class IntervalAdjacencyGraph(object):
                 adjacency_edges_to_remove.append((u, v))
                 # self.remove_adjacency_edge(u=u, v=v)
         for u, v, in adjacency_edges_to_remove:
-            self.remove_adjacency_edge(u=u, v=v)
+            self.remove_adjacency_edge(u=u, v=v, adj_type=AdjacencyType.NOVEL)
             if clear_nodes_after:
                 if self.graph.degree[u] == 0:
                     self.graph.remove_node(n=u)
