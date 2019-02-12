@@ -595,6 +595,9 @@ def main():
 
     # ilp_model.gm.write(os.path.join(output_dir), "gurobi.mps")
     ilp_model.gm.write(os.path.join(output_dir, "gurobi.lp"))
+    with open(os.path.join(output_dir, "gurobi.sol"), "wt") as destination:
+        for var in ilp_model.gm.getVars():
+            print(var.name, var.X, file=destination)
     ilp_model.gm.write(os.path.join(output_dir, "gurobi.sol"))
 
 
