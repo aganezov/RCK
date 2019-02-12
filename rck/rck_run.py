@@ -598,7 +598,7 @@ def main():
     with open(os.path.join(output_dir, "gurobi.sol"), "wt") as destination:
         for var in ilp_model.gm.getVars():
             print(var.VarName, var.X, file=destination)
-    ilp_model.gm.write(os.path.join(output_dir, "gurobi.sol"))
+    # ilp_model.gm.write(os.path.join(output_dir, "gurobi.sol"))
 
 
     logger.info("Gurobi finished execution with status {status}".format(status=status))
