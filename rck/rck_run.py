@@ -594,8 +594,8 @@ def main():
         exit(1)
 
     # ilp_model.gm.write(os.path.join(output_dir), "gurobi.mps")
-    ilp_model.gm.write(os.path.join(output_dir), "gurobi.lp")
-    ilp_model.gm.write(os.path.join(output_dir), "gurobi.sol")
+    ilp_model.gm.write(os.path.join(output_dir, "gurobi.lp"))
+    ilp_model.gm.write(os.path.join(output_dir, "gurobi.sol"))
 
 
     logger.info("Gurobi finished execution with status {status}".format(status=status))
