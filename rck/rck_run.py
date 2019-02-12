@@ -599,7 +599,7 @@ def main():
         for var in ilp_model.gm.getVars():
             print(var.VarName, var.X, file=destination)
     # ilp_model.gm.write(os.path.join(output_dir, "gurobi.sol"))
-
+    ilp_model.gm.update()
 
     logger.info("Gurobi finished execution with status {status}".format(status=status))
     logger.info("Extracting inferred diploid segment copy number data")
