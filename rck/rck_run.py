@@ -599,7 +599,7 @@ def main():
         for var in ilp_model.gm.getVars():
             print(var.VarName, var.X, file=destination)
     # ilp_model.gm.write(os.path.join(output_dir, "gurobi.sol"))
-    ilp_model.gm.update()
+    # ilp_model.gm.update()
 
     logger.info("Gurobi finished execution with status {status}".format(status=status))
     logger.info("Extracting inferred diploid segment copy number data")
@@ -612,6 +612,7 @@ def main():
     scnt_base_name = re.sub("\.+", ".", scnt_base_name)
     scnt_file_path = os.path.join(output_dir, scnt_base_name)
     logger.info("Writing inferred diploid segment copy number data to {file}".format(file=scnt_file_path))
+    remove_cn_data_from_segments(segments=segments)
     write_scnt_to_file(file_name=scnt_file_path, segments=segments, scnt=scnt)
     acnt_base_name = args.out_prefix_name + "rck.acnt.tsv"
     if acnt_base_name.startswith("."):
@@ -619,6 +620,7 @@ def main():
     acnt_base_name = re.sub("\.+", ".", acnt_base_name)
     acnt_file_path = os.path.join(output_dir, acnt_base_name)
     logger.info("Writing inferred diploid adjacency copy number data to {file}".format(file=acnt_file_path))
+    remove_cn_data_from_adjacencies(adjacencies=adjacencies)
     write_acnt_to_file(file_name=acnt_file_path, acnt=acnt, adjacencies=adjacencies, output_reference=True, mix_reference_and_novel=args.o_acnt_mix_novel_and_reference)
 
     #########

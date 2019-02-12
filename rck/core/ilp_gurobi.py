@@ -277,7 +277,7 @@ class OptModelMultiClone(object):
         # Binary variables that define whether inferred haplotype copy number pairing for a given segment/fragments in synch (1) on the allele-specific input order, or flips it (0)
         ###
         for fid in list(self.variables[FRAGMENT_ALLELE].keys()):
-            var = self.gm.addVar(vtype=g.GRB.BINARY, name="b_{{fid}}".format(fid=str(fid)))
+            var = self.gm.addVar(vtype=g.GRB.BINARY, name="b_{{{fid}}}".format(fid=str(fid)))
             if self.starting_vars is not None and FRAGMENT_ALLELE in self.starting_vars and fid in self.starting_vars[FRAGMENT_ALLELE]:
                 var.start = self.starting_vars[FRAGMENT_ALLELE][fid]
             self.variables[FRAGMENT_ALLELE][fid] = var
@@ -745,6 +745,7 @@ class OptModelMultiClone(object):
         self.gm.setObjective(lin_exp, g.GRB.MINIMIZE)
 
     def get_scnt_from_model(self):
+        # self.gm.update()
         result = {}
         for clone_id in self.clone_ids:
             scnp = SegmentCopyNumberProfile()
@@ -758,6 +759,7 @@ class OptModelMultiClone(object):
         return result
 
     def get_acnt_from_model(self):
+        # self.gm.update()
         result = {}
         for clone_id in self.clone_ids:
             acnp = AdjacencyCopyNumberProfile()
