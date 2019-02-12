@@ -12,7 +12,7 @@ sys.path.append(current_dir)
 
 import rck
 from rck.core.io import get_standard_logger_from_args, read_adjacencies_from_source, write_adjacency_groups_to_destination, get_logging_cli_parser
-from rck.utils.adj.adjacency_group_inference import infer_sniffles_molecule_groups, infer_short_nas_labeling_groups, infer_alignment_labeling_groups
+from rck.utils.adj.adjacency_group_inference import infer_sniffles_molecule_groups, infer_short_nas_labeling_groups, infer_alignment_labeling_groups, filter_alignment
 from rck.utils.adj.adjacency_group_process import refined_labeling_groups
 
 
@@ -66,6 +66,16 @@ def main():
     sniffles_labeling_group_parser.add_argument("--o-aids-separator", default=",")
     sniffles_labeling_group_parser.add_argument("--o-extra-separator", default=";")
     ###
+    filter_alignment_parser = subparsers.add_parser("filter-alignment", parents=[cli_logging_parser])
+    filter_alignment_parser.add_argument("--rck-adj", type=argparse.FileType("rt"), required=True)
+    filter_alignment_parser.add_argument("--i-separator", default="\t")
+    filter_alignment_parser.add_argument("--i-extra-separator", default=";")
+    filter_alignment_parser.add_argument("--extra-rnames-field", default="rnames")
+    filter_alignment_parser.add_argument("--alignment", required=True)
+    filter_alignment_parser.add_argument("--alignment-format", choices=["sam", "bam", "cram"], default="bam")
+    filter_alignment_parser.add_argument("-o", "--output", required=True)
+    filter_alignment_parser.add_argument("--output-format", choices=["sam", "bam", "cram"], default="bam")
+    ###
     args = parser.parse_args()
     logger = get_standard_logger_from_args(args=args, program_name="RCK-UTILS-ADJ-GROUPS-infer")
     if args.command == "sniffles-m":
@@ -112,6 +122,14 @@ def main():
         write_adjacency_groups_to_destination(destination=args.output, adjacency_groups=adj_groups,
                                               separator=args.o_separator, aids_separator=args.o_aids_separator, extra_separator=args.o_extra_separator,
                                               extra_fill="")
+    elif args.command == "filter-alignment":
+        logger.info("Filtering input read alignment to retain only reads mentioned as supporting adjacencies from the input")
+        logger.info("Reading adjacencies from {file}".format(file=args.rck_adj))
+        adjacencies = read_adjacencies_from_source(source=args.rck_adj, extra_separator=args.i_extra_separator, separator=args.i_separator)
+        logger.info("Filtering input alignment form file {file} and writing result in {o_file}".format(file=args.alignment, o_file=args.output))
+        filter_alignment(adjacencies=adjacencies, alignment_file_name=args.alignment, alignment_format=args.alignment_format, extra_rnames_field=args.extra_rnames_field,
+                         output_alignment_file_name=args.output, output_alignment_format=args.output_format)
+        exit(0)
 
 
 if __name__ == "__main__":

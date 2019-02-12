@@ -204,3 +204,20 @@ def infer_alignment_labeling_groups(adjacencies, alignment_file_name, alignment_
                 cnt += 1
             result.extend(groups)
     return result
+
+
+def filter_alignment(adjacencies, alignment_file_name, output_alignment_file_name, alignment_format="bam", extra_rnames_field="rnames", output_alignment_format="bam"):
+    all_read_names = set()
+    for adj in adjacencies:
+        read_names = adj.extra.get(extra_rnames_field, "").split(",")
+        if len(read_names) == 1 and len(read_names[0]) == 0:
+            continue
+        for read_name in read_names:
+            all_read_names.add(read_name)
+    i_mode = get_mode_str(format=alignment_format, input=True)
+    o_mode = get_mode_str(format=output_alignment_format, input=False)
+    with pysam.AlignmentFile(alignment_file_name, i_mode) as i_stream:
+        with pysam.AlignmentFile(output_alignment_file_name, o_mode, template=i_stream) as o_stream:
+            for entry in i_stream:
+                if entry.qname in all_read_names:
+                    o_stream.write(entry)
