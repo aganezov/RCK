@@ -137,20 +137,26 @@ def get_labeling_groups(read_alignments, read_adjacencies, strategy="skip", delt
                 direction_neighbours = positions_on_alignment[:p_index] if p.strand == Strand.FORWARD else positions_on_alignment[p_index + 1:]
                 if len(direction_neighbours) == 0:
                     continue
-                else:
-                    neighbour = direction_neighbours[-1] if p.strand == Strand.FORWARD else direction_neighbours[0]
-                    processed_positions.add(neighbour)
-                    neighbour_ids = [adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased) for adj in positions_to_adjacencies[neighbour]]
-                    adj_index = 0 if p == adj.position1 else 1
-                    neighbour_indexes = [0 if neighbour == adj.position1 else 1 for adj in positions_to_adjacencies[neighbour]]
-                    extra = {
-                        "alignment": alignment.query_name,
-                        AG_LABELING: [adj_index] + neighbour_indexes
-                    }
-                    ag = AdjacencyGroup(gid=cnt, aids=[aid] + neighbour_ids, group_type=AdjacencyGroupType.LABELING, extra=extra)
-                    result.append(ag)
-                    cnt += 1
-                    break
+                ordered_neighbours = direction_neighbours if p.strand == Strand.REVERSE else direction_neighbours[::-1]
+                neighbour = None
+                for candidate in ordered_neighbours:
+                    if candidate.Strand != p.strand:
+                        neighbour = candidate
+                if neighbour is None:
+                    continue
+                # neighbour = direction_neighbours[-1] if p.strand == Strand.FORWARD else direction_neighbours[0]
+                processed_positions.add(neighbour)
+                neighbour_ids = [adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased) for adj in positions_to_adjacencies[neighbour]]
+                adj_index = 0 if p == adj.position1 else 1
+                neighbour_indexes = [0 if neighbour == adj.position1 else 1 for adj in positions_to_adjacencies[neighbour]]
+                extra = {
+                    "alignment": alignment.query_name,
+                    AG_LABELING: [adj_index] + neighbour_indexes
+                }
+                ag = AdjacencyGroup(gid=cnt, aids=[aid] + neighbour_ids, group_type=AdjacencyGroupType.LABELING, extra=extra)
+                result.append(ag)
+                cnt += 1
+                break
     return result
 
 
