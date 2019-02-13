@@ -140,7 +140,7 @@ def get_labeling_groups(read_alignments, read_adjacencies, strategy="skip", delt
                 ordered_neighbours = direction_neighbours if p.strand == Strand.REVERSE else direction_neighbours[::-1]
                 neighbour = None
                 for candidate in ordered_neighbours:
-                    if candidate.Strand != p.strand:
+                    if candidate.strand != p.strand:
                         neighbour = candidate
                 if neighbour is None:
                     continue
