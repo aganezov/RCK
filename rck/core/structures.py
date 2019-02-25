@@ -1810,7 +1810,7 @@ def aligned_scnts(segments_by_sample_names, scnts_by_sample_names, fill_gaps=Tru
     for sample_name in sample_names:
         scnt = result_scnts_by_sample_names[sample_name]
         segments = result_segments_by_sample_names[sample_name]
-        ref_segments, ref_scnt = refined_scnt_with_adjacencies_and_telomeres(segments=segments, scnt=scnt, adjacencies=[], telomere_positions=all_positions_list)
+        ref_segments, ref_scnt, _ = refined_scnt_with_adjacencies_and_telomeres(segments=segments, scnt=scnt, adjacencies=[], telomere_positions=all_positions_list)
         result_segments_by_sample_names[sample_name] = ref_segments
         result_scnts_by_sample_names[sample_name] = ref_scnt
     return result_segments_by_sample_names, result_scnts_by_sample_names
