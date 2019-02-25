@@ -6,8 +6,8 @@ package:
   version: "{{ version }}"
 
 source:
-  url: https://test-files.pythonhosted.org/packages/b3/5d/c6d75c98d2d583115f20cd5561201a7cef3f0d0018b3b94dd0dfb73366d9/RCK-0.0.1a2.tar.gz
-  sha256: 3589735bc653b9ebb022c2dd12fe43b2d1289ec4b6217864b9c540e00b38b264
+  url: https://files.pythonhosted.org/packages/44/12/8c662b2c6e1e0d2939ca95dec4154b786a900c453f4dc5c6757f8def2426/RCK-1.0.0a2.tar.gz
+  sha256: 64f6e7343416ab33b2b01988f14853ea55b173c9d563fbc18f473f78d4e5e413
 
 build:
   number: 0
@@ -63,6 +63,12 @@ test:
     - rck-scnt-x2rck battenberg --help  # [not win]
     - rck-scnt-x2rck hatchet --help # [not win]
     - rck-scnt-x2rck remixt --help  # [not win]
+    - rck-scnt-process --help # [not win]
+    - rck-scnt-process refine --help # [not win]
+    - rck-scnt-process align --help # [not win]
+    - rck-scnt-process distance --help # [not win]
+    - rck-scnb --help # [not win]
+    - rck-input-refine --help # [not win]
 
 about:
   home: https://github.com/aganezov/rck
