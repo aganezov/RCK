@@ -1,3 +1,5 @@
 include LICENSE README.md setup.py
 recursive-include rck/utils *
 recursive-include docs *
+global-exclude __pycache__
+global-exclude *.py[co]

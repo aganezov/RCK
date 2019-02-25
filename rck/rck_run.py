@@ -11,11 +11,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 import rck
 from rck.utils.adj.process import refined_adjacencies_reciprocal
-from rck.utils.adj.adjacency_group_process import refined_labeling_groups
 from rck.core.io import read_adjacencies_from_file, write_acnt_to_file, get_logging_cli_parser, get_standard_logger_from_args, read_adjacency_groups_from_file, \
     read_segments_from_file, \
     extract_scnt_from_segments, extract_scnb_from_segments, read_scnb_from_file, get_full_path, write_scnt_to_file, EXTERNAL_NA_ID, FALSE_POSITIVE, remove_cn_data_from_segments, \
-    write_scnb_to_file, write_adjacencies_to_file, write_segments_to_file, write_adjacency_groups_to_file, remove_cn_data_from_adjacencies, read_positions_from_file, \
+    write_scnb_to_file, write_adjacencies_to_file, write_segments_to_file, remove_cn_data_from_adjacencies, read_positions_from_file, \
     write_positions_to_file, remove_cnb_data_from_segments
 from rck.core.process import positions_aligned, adj_groups_concur
 from rck.core.structures import get_segments_for_fragments_ids_dict, get_ref_telomeres_from_segments, get_ref_adjacencies_from_segments, SegmentCopyNumberBoundaries, refined_scnt, \
@@ -129,7 +128,7 @@ def main():
     ###
     args = parser.parse_args()
 
-    from rck.core.ilp_gurobi import OptModelMultiClone, DEFAULT_GROUP_M_FP, SEGMENT_LENGTH_ATTRIBUTE, DEFAULT_GROUP_N_FP
+    from rck.core.ilp_gurobi import OptModelMultiClone, DEFAULT_GROUP_M_FP, SEGMENT_LENGTH_ATTRIBUTE
     import gurobi as g
     logger = get_standard_logger_from_args(args=args, program_name="RCK")
 
