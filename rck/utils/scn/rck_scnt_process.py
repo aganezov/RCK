@@ -37,7 +37,7 @@ def main():
     align_parser.add_argument("--no-allow-unit-segments", action="store_false", dest="allow_unit_segments")
     align_parser.add_argument("--output-dir", default="")
     ###
-    distance_parser = subparsers.add_parser("distance", parents=cli_logging_parser)
+    distance_parser = subparsers.add_parser("distance", parents=[cli_logging_parser])
     distance_parser.add_argument("--scnt1", type=argparse.FileType("rt"), required=True)
     distance_parser.add_argument("--scnt1-separator", default="\t")
     distance_parser.add_argument("--scnt1-extra-separator", default=";")
