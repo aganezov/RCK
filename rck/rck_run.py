@@ -14,7 +14,7 @@ from rck.utils.adj.process import refined_adjacencies_reciprocal
 from rck.core.io import read_adjacencies_from_file, write_acnt_to_file, get_logging_cli_parser, get_standard_logger_from_args, read_adjacency_groups_from_file, \
     read_segments_from_file, \
     extract_scnt_from_segments, extract_scnb_from_segments, read_scnb_from_file, get_full_path, write_scnt_to_file, EXTERNAL_NA_ID, FALSE_POSITIVE, remove_cn_data_from_segments, \
-    write_scnb_to_file, write_adjacencies_to_file, write_segments_to_file, write_adjacency_groups_to_file, remove_cn_data_from_adjacencies, read_positions_from_file, \
+    write_scnb_to_file, write_adjacencies_to_file, write_segments_to_file, remove_cn_data_from_adjacencies, read_positions_from_file, \
     write_positions_to_file, remove_cnb_data_from_segments
 from rck.core.process import positions_aligned, adj_groups_concur
 from rck.core.structures import get_segments_for_fragments_ids_dict, get_ref_telomeres_from_segments, get_ref_adjacencies_from_segments, SegmentCopyNumberBoundaries, refined_scnt, \
@@ -101,9 +101,11 @@ def main():
     run_group.add_argument("--run-g-mip-gap", type=float, default=0.015)
     run_group.add_argument("--run-g-time-limit", type=int, default=28800)
     run_group.add_argument("--run-g-threads", type=int, default=4)
+    run_group.add_argument("--run-g-mip-focus", type=int, choices=[0, 1, 2, 3], default=0)
     run_group.add_argument("--run-nas-fp", type=float, default=0.1)
     run_group.add_argument("--run-group-m-default-fp", type=float, default=0.1)
-    run_group.add_argument("--run-segment-length-attr", choices=["length, length_100, length_1000"], default="length_100")
+    run_group.add_argument("--run-group-n-default-fp", type=float, default=0.1)
+    run_group.add_argument("--run-segment-length-attr", choices=["length", "length_10", "length_100", "length_1000"], default="length_10")
     run_group.add_argument("--run-g-allow-interrupted", action="store_true")
     ###
     output_group = parser.add_argument_group()
@@ -115,11 +117,13 @@ def main():
     output_group.add_argument("--o-acnt-mix-novel-and-reference", action="store_true",)
     ###
     post_group = parser.add_argument_group()
-    post_group.add_argument("--post-check-scnb", action="store_true", dest="post_check_scnb")
     post_group.add_argument("--post-check-all", action="store_true", dest="post_check_all")
+    post_group.add_argument("--post-check-scnb", action="store_true", dest="post_check_scnb")
     post_group.add_argument("--post-check-labeling", action="store_true", dest="post_check_labeling")
     post_group.add_argument("--post-check-balancing", action="store_true", dest="post_check_balancing")
-    post_group.add_argument("--post-check-adj-groups", action="store_true", dest="post_check_adj_group")
+    post_group.add_argument("--post-check-adj-groups", action="store_true", dest="post_check_adj_groups")
+    post_group.add_argument("--post-check-adj-groups-m", action="store_true", dest="post_check_adj_groups_m")
+    post_group.add_argument("--post-check-adj-groups-n", action="store_true", dest="post_check_adj_groups_n")
     post_group.add_argument("--post-check-nas-fp", action="store_true", dest="post_check_nas_fp")
     ###
     args = parser.parse_args()
@@ -314,7 +318,7 @@ def main():
     logger.info("A total of input telomere locations is {cnt}".format(cnt=len(input_telomere_positions)))
 
     logger.info("Finished preprocessing. At this point every data part must be aligned with each other.")
-
+    logger.info("Checking data alignment/concordance")
     if fragments is None:
         logger.error("FRAGMENTS must exist; their absence at this point indicates that preprocessing was turned off, while --fragments were not part of the original input")
         exit(1)
@@ -337,22 +341,27 @@ def main():
     for na in input_adjacencies:
         nas_positions.append(na.position1)
         nas_positions.append(na.position2)
+    logger.debug("Checking novel adjacency positions concordance")
     if not positions_aligned(segments_positions=segments_positions, other_positions=nas_positions):
         logger.error("NOVEL ADJACENCIES positions are not aligned with extremities of SEGMENTS; "
                      "having this problem at this point indicates that the preprocessing was turned off and the data in original input SCNT and NAS is not aligned")
         exit(1)
     telomeres = sorted(get_ref_telomeres_from_segments(segments=segments) + input_telomere_positions, key=lambda p: p.coordinate)
+    logger.debug("Checking telomere positions concordance")
     if not positions_aligned(segments_positions=segments_positions, other_positions=telomeres):
         logger.error("TELOMERES positions are not aligned with extremities of SEGMENTS; "
                      "having this problem at this problem indicates that preprocessing was turned off and the data in the original SCNT and --telomeres is not aligned")
         exit(1)
+    logger.debug("Checking adjacency groups concordance")
     if len(adjacency_groups) > 0 and not adj_groups_concur(adj_groups=adjacency_groups, adjacencies=input_adjacencies):
         logger.error("Some novel adjacencies group in NAS-GROUPS refers to an absent ADJACENCY; "
                      "having this problem at this time indicates that either the original --nas-groups has a group that is referring to the missing novel adjacency in NAS, "
                      "or the referred novel adjacency from NAS was removed during the preprocessing.")
         exit(1)
+    logger.debug("Populating adjacency groups")
+    adjacencies_by_external_ids = {adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased): adj for adj in input_adjacencies}
     for ag in adjacency_groups:
-        ag.populate_adjacencies_via_ids(source=input_adjacencies)
+        ag.populate_adjacencies_via_ids(source=input_adjacencies, source_by_ids=adjacencies_by_external_ids)
 
     ########
     #
@@ -380,12 +389,6 @@ def main():
     logger.info("Writing (preprocessed) fragments data to {file}".format(file=preprocessed_fragments_file))
     write_segments_to_file(file_name=preprocessed_fragments_file, segments=fragments, extra=None)
 
-    preprocessed_adjacencies_group_file = os.path.join(preprocessed_input_dir_path, "rck.ag.tsv")
-    if len(adjacency_groups) > 0:
-        logger.info("Writing (preprocessed) adjacency groups to {file}".format(file=preprocessed_adjacencies_group_file))
-        write_adjacency_groups_to_file(file_name=preprocessed_adjacencies_group_file, adjacency_groups=adjacency_groups)
-    else:
-        logger.debug("No adjacencies groups information is present. Nothing to write.")
     ########
 
     logger.debug("Extracting reference adjacencies from input segments")
@@ -408,6 +411,9 @@ def main():
     preprocessed_telomeres_file = os.path.join(preprocessed_input_dir_path, "rck.pos.tsv")
     logger.info("Writing (preprocessed) telomeres (both input and reference) to {file}".format(file=preprocessed_telomeres_file))
     write_positions_to_file(file_name=preprocessed_telomeres_file, positions=telomeres)
+
+    logger.debug("Output directory is {output}".format(output=output_dir))
+    os.makedirs(output_dir, exist_ok=True)
 
     ##########
     #
@@ -438,6 +444,7 @@ def main():
     logger.debug("Setting gurobi parameters")
     ilp_model.gm.setParam("MIPGap", args.run_g_mip_gap)
     ilp_model.gm.setParam("MIPGapAbs", args.run_g_mip_gap)
+    ilp_model.gm.setParam("MIPFocus", args.run_g_mip_focus)
     ilp_model.gm.setParam("LogFile", gurobi_log_path)
     ilp_model.gm.setParam("TimeLimit", args.run_g_time_limit)
     ilp_model.gm.setParam("Threads", args.run_g_threads)
@@ -446,6 +453,7 @@ def main():
 
     logger.info("Gurobi model solving has ended")
     status = ilp_model.gm.status
+    solution_cnt = ilp_model.gm.solcount
     if status == g.GRB.Status.INFEASIBLE:
         logger.error("Constructed model was infeasible to solve. This usually happens because of the tight segment copy number boundaries.")
         logger.error("\t Try more flexible segment copy number boundaries or try increasing allowed Novel adjacencies False Positive value.")
@@ -461,6 +469,9 @@ def main():
         allowed_statuses.append(g.GRB.Status.INTERRUPTED)
     if status not in allowed_statuses:
         logger.error("Gurobi finished with status {status}".format(status=status))
+        logger.error("Inference was unsuccessful")
+        exit(1)
+    if solution_cnt == 0:
         logger.error("Inference was unsuccessful")
         exit(1)
 
@@ -602,8 +613,8 @@ def main():
                 logger.info("Everything is OK! in clone {clone_id} all extremities have non-negative copy number excess, and inferred telomere sites concur with the input"
                             "".format(clone_id=clone_id))
 
-    if args.post_check_all or args.post_check_adj_groups:
-        logger.info("Performing post-inference check on adjacencies groups")
+    if args.post_check_all or args.post_check_adj_groups or args.post_check_adj_groups_m:
+        logger.info("Performing post-inference check on adjacencies groups (molecule type)")
         molecule_groups = [ag for ag in adjacency_groups if ag.group_type == AdjacencyGroupType.MOLECULE]
         molecule_groups_fine_cnt = 0
         logger.info("There were {cnt} molecule adjacency groups in the input.".format(cnt=len(molecule_groups)))

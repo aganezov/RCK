@@ -2,6 +2,7 @@
 import argparse
 import ast
 import csv
+import sys
 import datetime
 import itertools
 import logging
@@ -14,10 +15,13 @@ from rck.core.structures import AdjacencyCopyNumberProfile, AdjacencyGroup, CNBo
 from rck.core.structures import SegmentCopyNumberProfile, Haplotype, AdjacencyType, Phasing
 from rck.core.structures import Position, Strand, Adjacency, Segment
 
+csv.field_size_limit(sys.maxsize)
+
 AID = "aid"
 GID = "gid"
 AIDS = "aids"
 AG_TYPE = "agt"
+AG_LABELING = "agl"
 FALSE_POSITIVE = "fp"
 
 CHR1 = "chr1"
@@ -731,19 +735,15 @@ def iter_adjacencies_acnt_dummy(adjacencies, acnt, clone_ids=None, inplace=True)
 def write_acnt_to_destination(destination, acnt, adjacencies, clone_ids=None,
                               extra="all", extra_fill="", extra_separator=";", separator="\t", sort_adjacencies=True, output_reference=True, inplace=False,
                               mix_reference_and_novel=False):
-    ref_adjacencies = list(filter(lambda a: a.adjacency_type == AdjacencyType.REFERENCE, adjacencies))
-    nov_adjacencies = list(filter(lambda a: a.adjacency_type == AdjacencyType.NOVEL, adjacencies))
-    if mix_reference_and_novel:
+    entries = list(adjacencies)
+    if sort_adjacencies:
+        entries = sorted(entries, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
+    if not mix_reference_and_novel:
+        ref_adjacencies = list(filter(lambda a: a.adjacency_type == AdjacencyType.REFERENCE, adjacencies))
+        nov_adjacencies = list(filter(lambda a: a.adjacency_type == AdjacencyType.NOVEL, adjacencies))
         entries = nov_adjacencies + ref_adjacencies
-        if sort_adjacencies:
-            entries = sorted(entries, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
-    else:
-        if sort_adjacencies:
-            nov_adjacencies = sorted(nov_adjacencies, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
-            ref_adjacencies = sorted(ref_adjacencies, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
-        entries = nov_adjacencies + ref_adjacencies
-    if output_reference:
-        entries = itertools.chain(entries, ref_adjacencies)
+    if not output_reference:
+        entries = [adj for adj in entries if adj.adjacency_type == AdjacencyType.NOVEL]
     if clone_ids is None:
         clone_ids = sorted(acnt.keys())
     entries = iter_adjacencies_acnt_dummy(adjacencies=entries, acnt=acnt, clone_ids=clone_ids, inplace=inplace)
@@ -954,6 +954,8 @@ def parse_adj_groups_extra(extra_string, extra_separator=";"):
             value = AdjacencyGroupType.from_string(string=value)
         elif key == FALSE_POSITIVE:
             value = float(value)
+        elif key == AG_LABELING:
+            value = list(map(int, value.split(",")))
         result[key] = value
     return result
 
@@ -977,12 +979,14 @@ def write_adjacency_groups_to_destination(destination, adjacency_groups, separat
     for ag in adjacency_groups:
         data = {}
         data[GID] = ag.gid
-        data[AIDS] = aids_separator.join(sorted(map(str, ag.adjacencies_ids)))
+        data[AIDS] = aids_separator.join(map(str, ag.adjacencies_ids))
         extra_strings = ["{ag_type_string}={ag_type}".format(ag_type_string=AG_TYPE, ag_type=ag.group_type.value)]
         if extra_description_is_all(extra=extra):
             for key, value in ag.extra.items():
                 if isinstance(value, (list, tuple)):
                     value = ",".join(map(str, value))
+                elif isinstance(value, AdjacencyGroupType):
+                    value = value.value
                 extra_strings.append("{extra_name}={extra_value}".format(extra_name=str(key).lower(), extra_value=value if value is not None else extra_fill))
         else:
             for entry in extra:
@@ -992,6 +996,11 @@ def write_adjacency_groups_to_destination(destination, adjacency_groups, separat
                 if isinstance(value, (list, tuple)):
                     value = ",".join(map(str, value))
                 extra_strings.append("{extra_name}={extra_value}".format(extra_name=str(entry).lower(), extra_value=value))
+        agt_present = False
+        for extra_string in extra_strings:
+            agt_present |= "{ag_type_string}=".format(ag_type_string=AG_TYPE) in extra_string
+        if not agt_present:
+            extra_strings.append("{ag_type_string}={ag_type}".format(ag_type_string=AG_TYPE, ag_type=ag.group_type.value))
         extra_string = extra_separator.join(extra_strings)
         data[EXTRA] = extra_string
         writer.writerow(data)

@@ -148,6 +148,7 @@ def update_nas_ids(nas_by_ids_defaultdict, setup):
                 if not na.extra[EXTERNAL_NA_ID].endswith(setup.get(ID_SUFFIX, "")):
                     na.extra[EXTERNAL_NA_ID] += "_{suffix}".format(suffix=setup.get(ID_SUFFIX, ""))
         for na in nas:
+            na.extra[EXTERNAL_NA_ID] = na.extra[EXTERNAL_NA_ID].replace(":", "_")
             result[na.extra[EXTERNAL_NA_ID]] = na
     return result
 
@@ -494,7 +495,7 @@ def get_nas_from_grocsv_vcf_records(grocsv_vcf_records, setup=None, samples=None
                 refute = False
                 if samples_only:
                     refute = any([value for key, value in present.items() if key not in samples])
-                if sample_all_any == "any":
+                if samples_all_any == "any":
                     present = any([present.get(sample_name, True) for sample_name in samples])
                 else:
                     present = all([present.get(sample_name, True) for sample_name in samples])
@@ -688,6 +689,8 @@ def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None):
                 strand1 = Strand.FORWARD
                 strand2 = Strand.REVERSE
                 coord2 = record.INFO["END"]
+                if svtype == "INS" and coord1 == coord2:
+                    coord2 += 1
                 if svtype == "INS":
                     assert len(record.INFO["SVLEN"]) == 1
                     extra[SVLEN] = int(record.INFO["SVLEN"][0])

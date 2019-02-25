@@ -60,9 +60,13 @@ class IntervalAdjacencyGraph(object):
             raise ValueError()
         if v not in self.graph:
             raise ValueError()
-        if self.has_adjacency_edge(edge=(u, v), sort=True):   # can not have parallel adjacency edges. Only possible parallel edges are pairs of segment/adjacency ones
-            return
         obj = self.get_adjacency_object_from_adjacency(adjacency=adjacency, copy=copy_adjacency)
+        for adj_edge_w_data in self.adjacency_edges(nbunch=u):
+            adj_u, adj_v, adj_data = adj_edge_w_data
+            if {adj_u, adj_v} == {u, v} and adj_data["object"].adjacency_type == obj.adjacency_type:
+                return
+        # if self.has_adjacency_edge(edge=(u, v), sort=True):   # can not have parallel adjacency edges. Only possible parallel edges are pairs of segment/adjacency ones
+        #     return
         self.graph.add_edge(u, v, object=obj)
 
     @staticmethod
@@ -375,7 +379,7 @@ class IntervalAdjacencyGraph(object):
             for v_, v__, v_key, v_data in self.graph.edges(nbunch=v, data=True, keys=True):
                 if not isinstance(v_data["object"], Adjacency):
                     continue
-                if u_data["object"] == v_data["object"]:
+                if u_data["object"] == v_data["object"] and u_data["object"].adjacency_type == v_data["object"].adjacency_type:
                     assert v_key == u_key
                     edges_to_remove.append((u, v, v_key))
         for u, v, key in edges_to_remove:
