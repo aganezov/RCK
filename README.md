@@ -19,8 +19,7 @@ Current development of RCK is continued by Sergey Aganezov in the group of prof.
 
 The full description of the algorithm and its application on published cancer datasets are described in:
 
-````
-````
+[Sergey Aganezov and Benjamin J. Raphael, 2019](https://www.biorxiv.org/content/10.1101/560839v1)
 
 ### Contents:
 1. [Algorithm overview](#algorithm-overview)
@@ -152,8 +151,7 @@ For information about the format of the inferred clone- and haplotype-specific c
 ### Citation
 When using RCK's cancer karyotype reconstruction algorithm or any of RCK's utilities, please cite the following paper: 
 
-````
-````
+[Sergey Aganezov and Benjamin J. Raphael, 2019](https://www.biorxiv.org/content/10.1101/560839v1)
 
 ### Issues
 If you experience any issues with RCK installation, usage, or results or want to see RCK enhanced in any way, shape or form, please create an issue on RCK [issue tracker](https://github.com/aganezov/RCK/issues).
