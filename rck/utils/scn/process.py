@@ -83,5 +83,50 @@ def refined_segments(segments, additional_positions=None, additional_positions_b
     return refined_segments, segments_ids_mapping
 
 
+def lies_within(segment, segments, fully=False):
+    for s in segments:
+        if fully:
+            if s.start_coordinate <= segment.start_coordinate and segment.end_coordinate <= s.end_coordinate:
+                return True
+        else:
+            if s.start_coordinate <= segment.start_coordinate <= s.end_coordinate or \
+                    s.start_coordinate <= segment.end_coordinate <= s.end_coordinate or \
+                    segment.start_coordinate <= s.start_coordinate <= segment.end_coordinate or \
+                    segment.start_coordinate <= s.end_coordinate <= segment.end_coordinate:
+                return True
+    return False
 
+
+def filter_segments_by_chromosomal_regions(segments, include=None, exclude=None, include_full=True):
+    if include is None:
+        include = []
+    if exclude is None:
+        exclude = []
+    include_by_chr = defaultdict(list)
+    for segment in include:
+        include_by_chr[segment.chromosome.lower()].append(segment)
+    exclude_by_chr = defaultdict(list)
+    for segment in exclude:
+        exclude_by_chr[segment.chromosome.lower()].append(segment)
+    for chr in list(include_by_chr.keys()):
+        include_by_chr[chr] = sorted(include_by_chr[chr], key=lambda s: (s.start_coordinate, s.end_coordinate))
+    for chr in list(exclude_by_chr.keys()):
+        exclude_by_chr[chr] = sorted(exclude_by_chr[chr], key=lambda s: (s.start_coordinate, s.end_coordinate))
+    include_by_chr = dict(include_by_chr)
+    exclude_by_chr = dict(exclude_by_chr)
+    for segment in segments:
+        retain = True
+        chromosome = segment.chromosome
+        include_segments_chr = include_by_chr.get(chromosome, [])
+        if len(include_segments_chr) != 0:
+            retain = lies_within(segment=segment, segments=include_segments_chr, fully=include_full)
+        elif len(include_by_chr) > 0:
+            retain = False
+        if not retain:
+            continue
+        exclude_segments_chr = exclude_by_chr.get(chromosome, [])
+        if len(exclude_segments_chr) != 0:
+            retain = not lies_within(segment=segment, segments=exclude_segments_chr, fully=include_full)
+        if retain:
+            yield segment
 
