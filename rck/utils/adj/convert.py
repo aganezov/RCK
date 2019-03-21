@@ -802,7 +802,7 @@ def generate_nas_from_delly_vcf_records(source, setup=None):
             raise Exception("Unknown SV type \"{svtype}\" for Delly VCF input".format(svtype=svtype))
 
 
-def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None):
+def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None, silent_skip_unknown_sv=True):
     if setup is None:
         setup = {}
     result = defaultdict(list)
@@ -816,7 +816,7 @@ def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None):
         svtype = record.INFO["SVTYPE"]
         extra[SVTYPE] = svtype
         extra[EXTERNAL_NA_ID] = svid
-        if svtype in ["DEL", "INS", "INV", "BND"]:
+        if svtype in ["DEL", "INS", "INV", "BND", "DUP"]:
             for vcf_sample in record.samples:
                 if sample is None or vcf_sample.sample == sample:
                     support, total = 0, 0
@@ -829,14 +829,18 @@ def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None):
                     extra["re"] = support
                     extra["rcnt"] = total
                     break
-            if svtype in ["DEL", "INS"]:
+            if svtype in ["DEL", "INS", "DUP"]:
                 chr1 = str(record.CHROM)
                 coord1 = int(record.POS)
                 if setup.get(STRIP_CHR, True):
                     chr1 = strip_chr(chr_string=chr1)
                 chr2 = chr1
-                strand1 = Strand.FORWARD
-                strand2 = Strand.REVERSE
+                if svtype in ["DEL", "INS"]:
+                    strand1 = Strand.FORWARD
+                    strand2 = Strand.REVERSE
+                else:
+                    strand1 = Strand.REVERSE
+                    strand2 = Strand.FORWARD
                 coord2 = record.INFO["END"]
                 if svtype == "INS" and coord1 == coord2:
                     coord2 += 1
@@ -896,7 +900,10 @@ def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None):
                 processed_ids.add(svid)
                 processed_ids.add(mate_vcf_id)
         else:
-            raise Exception("Unknonw SV type \"{svtype}\" for PBSV VCF input".format(svtype=svtype))
+            if silent_skip_unknown_sv:
+                continue
+            else:
+                raise Exception("Unknonw SV type \"{svtype}\" for PBSV VCF input".format(svtype=svtype))
     result = update_nas_ids(nas_by_ids_defaultdict=result, setup=setup)
     return result.values()
 
