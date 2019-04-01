@@ -517,6 +517,16 @@ def write_adjacencies_to_file(file_name, adjacencies, extra="all", extra_fill=""
                                          sort_adjacencies=False)
 
 
+def stringify_adjacency_cn_entry(entry):
+    result = {}
+    for clone_id in entry.keys():
+        clone_specific_entries = {}
+        for phasing in entry[clone_id]:
+            clone_specific_entries[str(phasing)] = entry[clone_id][phasing]
+        result[clone_id] = clone_specific_entries
+    return str(result)
+
+
 def write_adjacencies_to_destination(destination, adjacencies, extra="all", extra_fill="", extra_separator=";", separator="\t", sort_adjacencies=True):
     if sort_adjacencies:
         adjacencies = sorted(adjacencies, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
@@ -540,13 +550,20 @@ def write_adjacencies_to_destination(destination, adjacencies, extra="all", extr
                 for key, value in adjacency.extra.items():
                     if isinstance(value, (list, tuple)):
                         value = ",".join(map(str, value))
+                    elif key == COPY_NUMBER and isinstance(value, (dict, defaultdict)):
+                        value = stringify_adjacency_cn_entry(entry=value)
                     extra_strings.append("{extra_name}={extra_value}".format(extra_name=str(key).lower(), extra_value=value if value is not None else extra_fill))
                 extra_strings.append("{extra_name}={extra_value}".format(extra_name=ADJACENCY_TYPE.lower(), extra_value=adjacency.adjacency_type.value))
             else:
                 for entry in extra:
+                    if entry.lower() == ADJACENCY_TYPE.lower():
+                        extra_strings.append("{extra_name}={extra_value}".format(extra_name=ADJACENCY_TYPE.lower(), extra_value=adjacency.adjacency_type.value))
+                        continue
                     value = adjacency.extra.get(entry, extra_fill)
                     if isinstance(value, (list, tuple)):
                         value = ",".join(map(str, value))
+                    elif entry == COPY_NUMBER and isinstance(value, (dict, defaultdict)):
+                        value = stringify_adjacency_cn_entry(entry=value)
                     extra_strings.append("{extra_name}={extra_value}".format(extra_name=str(entry).lower(), extra_value=value))
             extra_string = extra_separator.join(extra_strings)
             data[EXTRA] = extra_string

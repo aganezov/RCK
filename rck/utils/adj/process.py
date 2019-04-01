@@ -1,12 +1,15 @@
 import argparse
+import json
 from collections import defaultdict
 import re
 from copy import deepcopy, copy
 
+from pysam.libctabix import asTuple
 from sortedcontainers import SortedList
 import statistics
 
-from rck.core.io import EXTERNAL_NA_ID
+from core.io import stringify_adjacency_cn_entry, ADJACENCY_TYPE
+from rck.core.io import EXTERNAL_NA_ID, COPY_NUMBER
 from rck.core.structures import Strand, Adjacency, Position
 from rck.utils.adj.convert import GUNDEM_PER_SAMPLE_SUPPORT
 
@@ -267,7 +270,7 @@ def filter_adjacencies_by_size(adjacencies, min_size=0, max_size=1000000000, siz
             adj_size = adj.distance_non_hap
         if adj_size == 0 and allow_self_loops:
             yield adj
-        elif adj_size == -1 and allow_inter_chr:
+        elif (adj_size == -1 or adj.position1.chromosome != adj.position2.chromosome) and allow_inter_chr:
             yield adj
         elif min_size <= adj_size <= max_size:
             yield adj
@@ -350,6 +353,15 @@ def filter_adjacencies_by_extra(adjacencies,
                 for regex in regex_list:
                     if field in adj.extra:
                         data = adj.extra[field]
+                        if not isinstance(data, str):
+                            if field == COPY_NUMBER:
+                                data = stringify_adjacency_cn_entry(entry=data)
+                            else:
+                                data = str(data)
+                        if regex.search(data) is not None:
+                            keep = True
+                    elif field.lower() == ADJACENCY_TYPE.lower():
+                        data = str(adj.adjacency_type.value)
                         if regex.search(data) is not None:
                             keep = True
                     elif keep_extra_field_missing_strategy == REMOVE:
@@ -363,6 +375,16 @@ def filter_adjacencies_by_extra(adjacencies,
                 for regex in regex_list:
                     if field in adj.extra:
                         data = adj.extra[field]
+                        if not isinstance(data, str):
+                            if field == COPY_NUMBER:
+                                data = stringify_adjacency_cn_entry(entry=data)
+                            else:
+                                data = str(data)
+                        if regex.search(data) is not None:
+                            keep = False
+                            break
+                    elif field.lower() == ADJACENCY_TYPE.lower():
+                        data = str(adj.adjacency_type.value)
                         if regex.search(data) is not None:
                             keep = False
                             break
