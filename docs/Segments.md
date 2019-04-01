@@ -68,6 +68,7 @@ With the help of `rck-scnt-x2rck` one can convert clone- and allele-specific pre
 * **TitanCNA** [[paper](https://www.ncbi.nlm.nih.gov/pubmed/25060187) | [code](https://github.com/gavinha/TitanCNA)]
 * **Battenberg** [[paper](https://www.ncbi.nlm.nih.gov/pubmed/22608083) | [code](https://github.com/cancerit/cgpBattenberg)]
 * **ReMixT** [[paper](https://www.ncbi.nlm.nih.gov/pubmed/28750660) | [code](https://bitbucket.org/dranew/remixt)]
+* **Ginkgo** [[paper](https://www.nature.com/articles/nmeth.3578) | [code](https://github.com/robertaboukhalil/ginkgo)] (Attention! *haploid* mode only)
 
 For help message of `rck-scnt-x2rck` run 
 ````bash
