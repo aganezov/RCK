@@ -10,7 +10,7 @@ sys.path.append(current_dir)
 
 from rck.core.io import get_logging_cli_parser, get_standard_logger_from_args, write_scnt_to_destination, get_full_path
 from rck.utils.scn.convert import get_scnt_from_battenberg_source, get_scnt_from_hatchet_source, hatchet_get_clone_ids_from_file, \
-    get_scnt_from_remixt_source, titan_get_clone_ids_from_file, get_scnt_from_titan_source
+    get_scnt_from_remixt_source, titan_get_clone_ids_from_file, get_scnt_from_titan_source, get_scnt_from_ginkgo_source
 from rck.utils.adj.process import get_chromosome_strip_parser
 
 
@@ -50,6 +50,13 @@ def main():
     remixt_parser.add_argument("--separator", default="\t")
     remixt_parser.add_argument("--clone-ids", choices=["1", "2", "1,2"], default="1,2")
     remixt_parser.add_argument("-o", "--output", type=argparse.FileType("wt"), default=sys.stdout)
+    ####
+    ginkgo_parser = subparsers.add_parser("ginkgo", parents=[cli_logging_parser, chr_strip_parser])
+    ginkgo_parser.add_argument("ginkgo", type=argparse.FileType("rt"), default=sys.stdin)
+    ginkgo_parser.add_argument("--separator", default="\t")
+    ginkgo_parser.add_argument("--sample-name", required=True)
+    ginkgo_parser.add_argument("--dummy-clone-name", default="1")
+    ginkgo_parser.add_argument("-o", "--output", type=argparse.FileType("wt"), default=sys.stdout)
     ####
     args = parser.parse_args()
     logger = get_standard_logger_from_args(args=args, program_name="RCK-UTILS-SCNT")
@@ -99,6 +106,13 @@ def main():
         segments, scnt = get_scnt_from_remixt_source(source=args.remixt, separator=args.separator, chr_strip=args.strip_chr)
         logger.info("Writing allele-specific segment copy number values in RCK format to {file}".format(file=args.output))
         write_scnt_to_destination(destination=args.output, segments=segments, scnt=scnt, separator=args.separator, clone_ids=clone_ids)
+    elif args.command == "ginkgo":
+        logger.info("Converting *haploid* segments copy values from Ginkgo format to RCK")
+        logger.info("Reading *haploid* segments copy values from {file}".format(file=args.ginkgo))
+        segments, scnt = get_scnt_from_ginkgo_source(source=args.ginkgo, sample_name=args.sample_name, dummy_clone=args.dummy_clone_name,
+                                                     separator=args.separator, chr_strip=args.strip_chr)
+        logger.info("Writing *haploid* segments copy number values in RCK format to {file}".format(file=args.output))
+        write_scnt_to_destination(destination=args.output, segments=segments, scnt=scnt, clone_ids=set(args.dummy_clone_name), separator=args.separator)
     logger.info("Success!")
 
 

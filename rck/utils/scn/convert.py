@@ -244,3 +244,35 @@ def get_scnt_from_titan_source(source, sample_name, clone_ids, separator="\t", c
                 scnp.set_cn_record(sid=sid, hap=Haplotype.A, cn=1)
                 scnp.set_cn_record(sid=sid, hap=Haplotype.B, cn=1)
     return segments, scnt
+
+
+GINKGO_CHROMOSOME = "CHR"
+GINKGO_START_POSITION = "START"
+GINKGO_END_POSITION = "END"
+
+
+def get_scnt_from_ginkgo_file(file_name, sample_name, dummy_clone="1", separator="\t", chr_strip=True):
+    with open(file_name, "rt") as source:
+        return get_scnt_from_ginkgo_source(source=source, sample_name=sample_name, dummy_clone=dummy_clone, separator=separator, chr_strip=chr_strip)
+
+
+def get_scnt_from_ginkgo_source(source, sample_name, dummy_clone="1", separator="\t", chr_strip=True):
+    scnp = SegmentCopyNumberProfile()
+    segments = []
+    reader = csv.DictReader(source, delimiter=separator)
+    for row in reader:
+        chromosome = row[GINKGO_CHROMOSOME]
+        if chr_strip:
+            chromosome = strip_chr(chr_string=chromosome)
+        start = int(row[GINKGO_START_POSITION])
+        end = int(row[GINKGO_END_POSITION])
+        try:
+            cn = int(row[sample_name])
+        except KeyError:
+            raise IOError("Could not obtain a segment copy value for sample {sample}. Make sure that --sample-name matches (including case) to the column header in the Ginkgo file")
+        segment = Segment.from_chromosome_coordinates(chromosome=chromosome, start=start, end=end)
+        sid = segment.stable_id_non_hap
+        segments.append(segment)
+        scnp.set_cn_record(sid=sid, hap=Haplotype.A, cn=cn)
+    scnt = {dummy_clone: scnp}
+    return segments, scnt
