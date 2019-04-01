@@ -11,6 +11,7 @@ sys.path.append(current_dir)
 from rck.core.io import get_logging_cli_parser, get_standard_logger_from_args, get_full_path, read_scnt_from_file, write_scnt_to_file, \
     write_scnt_to_destination, read_scnt_from_source
 from rck.core.structures import aligned_scnts, refined_scnt, cn_distance_inter_scnt
+from rck.utils.adj.process import KEEP, REMOVE
 
 
 def main():
@@ -46,6 +47,19 @@ def main():
     distance_parser.add_argument("--scnt2-extra-separator", default=";")
     distance_parser.add_argument("--clone-ids", default=None)
     distance_parser.add_argument("--output", "-o", type=argparse.FileType("wt"), default=sys.stdout)
+    ###
+    filter_parser = subparsers.add_parser("filter", parents=[cli_logging_parser])
+    filter_parser.add_argument("scnt", type=argparse.FileType("rt"), default=sys.stdin)
+    filter_parser.add_argument("--separator", default="\t")
+    filter_parser.add_argument("--extra-separator", default=";")
+    filter_parser.add_argument("--keep-extra-field-regex", nargs="+", default=None)
+    filter_parser.add_argument("--keep-extra-field-regex-file", type=argparse.FileType("rt"), default=None)
+    filter_parser.add_argument("--keep-extra-field-missing-strategy", choices=[KEEP, REMOVE], default=KEEP)
+    filter_parser.add_argument("--remove-extra-field-regex", nargs="+", default=None)
+    filter_parser.add_argument("--remove-extra-field-regex-file", type=argparse.FileType("rt"), default=None)
+    filter_parser.add_argument("--remove-extra-field-missing-strategy", choices=[KEEP, REMOVE], default=KEEP)
+    filter_parser.add_argument("--min-size", type=int, default=0)
+    filter_parser.add_argument("--max-size", type=int, default=1000000000)
     ###
     args = parser.parse_args()
     logger = get_standard_logger_from_args(args=args, program_name="RCK-UTILS-SCNT-process")
@@ -106,6 +120,8 @@ def main():
             scnt_path = os.path.join(output_dir, new_name + "rck.scnt.tsv")
             logger.debug("Writing aligned SCNT {scnt_name} to {file}".format(scnt_name=name, file=scnt_path))
             write_scnt_to_file(file_name=scnt_path, segments=segments, scnt=scnt, separator=args.separator)
+    elif args.command == "filter":
+        pass
     elif args.command == "distance":
         clone_ids = args.clone_ids
         if args.clone_ids is not None:
