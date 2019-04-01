@@ -100,6 +100,11 @@ def main():
     svaba_parser.add_argument("--samples-all-any", choices=["all", "any"], default="any")
     svaba_parser.add_argument("--samples-only", action="store_true", dest="samples_only")
     ####
+    breakdancer_parser = subparsers.add_parser("breakdancer", parents=[shared_parser, cli_logging_parser, chr_strip_parser],
+                                               help="Convert Breakdancer(-max) SV calls into RCK format")
+    breakdancer_parser.add_argument("--id-suffix", dest="id_suffix", default="breakdancer")
+    breakdancer_parser.add_argument("breakdancer_file", type=argparse.FileType("rt"), default=sys.stdin)
+    ####
     args = parser.parse_args()
     setup = build_setup(args=args)
     logger = get_standard_logger_from_args(args=args, program_name="RCK-UTILS-ADJ-x2rck")
@@ -208,6 +213,10 @@ def main():
         samples = args.samples.split(",") if args.samples is not None else args.samples
         nas = get_nas_from_svaba_vcf_records(svaba_vcf_records=svaba_vcf_records, source_type=args.i_type, setup=setup, samples=samples, samples_all_any=args.samples_all_any,
                                              samples_only=args.samples_only)
+    elif args.command == "breakdancer":
+        logger.info("Starting converting adjacencies from Breakdancer(-max) to RCK")
+        logger.info("Reading and converting Breakdancer(-max) records from {file}".format(file=args.breakdancer_file))
+        nas = get_nas_from_breakdancer_source(source=args.breakdancer_file, setup=setup)
     logger.info("A total of {cnt} adjacencies were obtained.".format(cnt=len(nas)))
     logger.debug("Output extra fields were identified as {o_extra}".format(o_extra=",".join(extra)))
     include_chrs_regions_strings = []

@@ -1,4 +1,5 @@
 import csv
+import re
 from collections import defaultdict
 from copy import deepcopy
 
@@ -1011,10 +1012,67 @@ def get_nas_from_remixt_source(source, setup=None, separator="\t", clone_ids=Non
             chr1_coordinate -= 1
         if remixt_na_correction and chr2_strand == Strand.FORWARD:
             chr2_coordinate -= 1
+        if setup.get(STRIP_CHR, True):
+            chr1_name, chr2_name = strip_chr(chr_string=chr1_name), strip_chr(chr_string=chr2_name)
         position1 = Position(chromosome=chr1_name, coordinate=chr1_coordinate, strand=chr1_strand)
         position2 = Position(chromosome=chr2_name, coordinate=chr2_coordinate, strand=chr2_strand)
         novel_adjacency = Adjacency(position1=position1, position2=position2,
                                     adjacency_type=AdjacencyType.NOVEL, extra={EXTERNAL_NA_ID: naid, COPY_NUMBER: cn_data})
+        aid = novel_adjacency.stable_id_non_phased
+        result[aid].append(novel_adjacency)
+    result = update_nas_ids(nas_by_ids_defaultdict=result, setup=setup)
+    return result.values()
+
+
+BREAKDANCER_SCORE = "score"
+BREAKDANCER_NUM_READS = "num_reads"
+BREAKDANCER_NUM_READS_PER_LIB = "num_reads_lib"
+BREAKDANCER_INTR_CHROMOSOMAL_SV_TYPE = "CTX"
+
+
+def get_strand_from_breakdancer_strand_string(strand_string):
+    pcntstr, ncntstr, _ = re.split("[+-]", strand_string)
+    pcnt, ncnt = int(pcntstr), int(ncntstr)
+    return Strand.FORWARD if pcnt >= ncnt else Strand.REVERSE
+
+
+def get_nas_from_breakdancer_file(file_name, setup=None):
+    with open(file_name, "rt") as source:
+        return get_nas_from_breakdancer_source(source=source, setup=setup)
+
+
+def get_nas_from_breakdancer_source(source, setup=None):
+    if setup is None:
+        setup = {}
+    result = defaultdict(list)
+    for cnt, line in enumerate(source):
+        line = line.strip()
+        if len(line) == 0 or line.startswith("#"):
+            continue
+        data = line.split("\t")
+        chr1 = data[0]
+        coord1 = int(data[1])
+        strand1 = get_strand_from_breakdancer_strand_string(strand_string=data[2])
+        chr2 = data[3]
+        coord2 = int(data[4])
+        strand2 = get_strand_from_breakdancer_strand_string(strand_string=data[5])
+        if setup.get(STRIP_CHR, True):
+            chr1, chr2 = strip_chr(chr_string=chr1), strip_chr(chr_string=chr2)
+        sv_type = data[6]
+        size = int(data[7])
+        if sv_type == BREAKDANCER_INTR_CHROMOSOMAL_SV_TYPE:
+            size = -1
+
+        score = int(float(data[8]))
+        read_cnt = int(float(data[9]))
+        reads_per_lib_string = data[10]
+        naid = str(cnt)
+        position1 = Position(chromosome=chr1, coordinate=coord1, strand=strand1)
+        position2 = Position(chromosome=chr2, coordinate=coord2, strand=strand2)
+        novel_adjacency = Adjacency(position1=position1, position2=position2,
+                                    adjacency_type=AdjacencyType.NOVEL, extra={EXTERNAL_NA_ID: naid, SVTYPE: sv_type,
+                                                                               SVLEN: size, BREAKDANCER_SCORE: score,
+                                                                               BREAKDANCER_NUM_READS: read_cnt, BREAKDANCER_NUM_READS_PER_LIB: reads_per_lib_string})
         aid = novel_adjacency.stable_id_non_phased
         result[aid].append(novel_adjacency)
     result = update_nas_ids(nas_by_ids_defaultdict=result, setup=setup)
