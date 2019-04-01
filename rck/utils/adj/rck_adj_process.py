@@ -43,6 +43,7 @@ def main():
     filter_parser.add_argument("--min-size", type=int, default=0)
     filter_parser.add_argument("--max-size", type=int, default=1000000000)
     filter_parser.add_argument("--no-allow-inter-chr", action="store_false", dest="allow_inter_chr")
+    filter_parser.add_argument("--no-allow-intra-chr", action="store_false", dest="allow_intra_chr")
     filter_parser.add_argument("--size-extra-field")
     filter_parser.add_argument("--size-extra-field-no-abs", action="store_false", dest="size_extra_field_abs")
     filter_parser.add_argument("--size-extra-seq-field")
@@ -173,7 +174,7 @@ def main():
                                                   remove_extra_field=remove_extra_field, remove_extra_field_missing_strategy=args.remove_extra_field_missing_strategy)
         adjacencies = filter_adjacencies_by_size(adjacencies=adjacencies, min_size=args.min_size, max_size=args.max_size, size_extra_field=args.size_extra_field,
                                                  size_extra_seq_field=args.size_extra_seq_field, allow_inter_chr=args.allow_inter_chr,
-                                                 size_extra_field_abs=args.size_extra_field_abs)
+                                                 size_extra_field_abs=args.size_extra_field_abs, allow_intra_chr=args.allow_intra_chr,)
         write_adjacencies_to_destination(destination=args.rck_adj_file, adjacencies=adjacencies, sort_adjacencies=False, extra=extra)
         exit(0)
     elif args.command == "reciprocal":

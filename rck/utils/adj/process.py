@@ -252,7 +252,7 @@ def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude
 
 
 def filter_adjacencies_by_size(adjacencies, min_size=0, max_size=1000000000, size_extra_field=None, size_extra_seq_field=None,
-                               allow_inter_chr=True, size_extra_field_abs=True, allow_self_loops=True):
+                               allow_inter_chr=True, allow_intra_chr=True, size_extra_field_abs=True, allow_self_loops=True):
     for adj in adjacencies:
         adj_size = None
         try:
@@ -268,6 +268,8 @@ def filter_adjacencies_by_size(adjacencies, min_size=0, max_size=1000000000, siz
                 pass
         if adj_size is None:
             adj_size = adj.distance_non_hap
+        if not allow_intra_chr and adj.position1.chromosome == adj.position2.chromosome:
+            continue
         if adj_size == 0 and allow_self_loops:
             yield adj
         elif (adj_size == -1 or adj.position1.chromosome != adj.position2.chromosome) and allow_inter_chr:
