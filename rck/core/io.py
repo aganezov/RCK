@@ -1154,5 +1154,24 @@ def read_scn_boundaries(file_name, segments, clone_ids, separator="\t", cn_separ
     return result
 
 
+def write_scnt_to_shatterseek_destination(destination, segments, scnt, clone_id=None, default=0, output_header=True):
+    if clone_id is None:
+        clone_id = sorted(scnt.keys())[0]
+    if clone_id not in scnt:
+        raise ValueError("Clone {clone_id} is not present in the Segment Copy Number Tensor (available clone ids :{available})"
+                         "".format(clone_id=clone_id, available=",".join(map(str, sorted(scnt.keys())))))
+    scnp : SegmentCopyNumberProfile = scnt[clone_id]
+    if output_header:
+        print("chrom", "start", "end", "CN", sep="\t", file=destination)
+    for segment in segments:
+        total_cn = scnp.get_combined_cn(sid=segment.stable_id_non_hap, default=default)
+        print(segment.chromosome, segment.start_coordinate, segment.end_coordinate, total_cn, sep="\t", file=destination)
+
+
+def write_scnt_to_shatterseek_file(file_name, segments, scnt, clone_id=None, default=0, output_header=True):
+    with open(file_name, "wt") as dest:
+        write_scnt_to_shatterseek_destination(destination=dest, segments=segments, scnt=scnt, clone_id=clone_id, default=default, output_header=output_header)
+
+
 def get_full_path(path):
     return os.path.abspath(os.path.expanduser(path))

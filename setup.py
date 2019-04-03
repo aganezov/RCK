@@ -23,6 +23,7 @@ setup(
             "rck = rck.rck_run:main",
             "rck-scnt-x2rck = rck.utils.scn.rck_scnt_x2rck:main",
             "rck-scnt-process = rck.utils.scn.rck_scnt_process:main",
+            "rck-scnt-rck2x = rck.utils.scn.rck_scnt_rck2x:main",
             "rck-scnb = rck.utils.scn.rck_scnb:main",
             "rck-adj-x2rck = rck.utils.adj.rck_adj_x2rck:main",
             "rck-adj-rck2x = rck.utils.adj.rck_adj_rck2x:main",
