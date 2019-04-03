@@ -1,17 +1,13 @@
 import argparse
-import json
 from collections import defaultdict
 import re
 from copy import deepcopy, copy
 
-from pysam.libctabix import asTuple
 from sortedcontainers import SortedList
 import statistics
 
-from core.io import stringify_adjacency_cn_entry, ADJACENCY_TYPE
-from core.structures import Phasing, AdjacencyCopyNumberProfile
-from rck.core.io import EXTERNAL_NA_ID, COPY_NUMBER
-from rck.core.structures import Strand, Adjacency, Position
+from rck.core.io import EXTERNAL_NA_ID, COPY_NUMBER, stringify_adjacency_cn_entry, ADJACENCY_TYPE
+from rck.core.structures import Strand, Adjacency, Position, Phasing, AdjacencyCopyNumberProfile
 from rck.utils.adj.convert import GUNDEM_PER_SAMPLE_SUPPORT
 
 ORIGIN_IDS = "origin_ids"
