@@ -9,9 +9,10 @@ for _ in range(current_file_level):
 sys.path.append(current_dir)
 
 from rck.core.io import get_logging_cli_parser, get_standard_logger_from_args, get_full_path, read_scnt_from_file, write_scnt_to_file, \
-    write_scnt_to_destination, read_scnt_from_source
+    write_scnt_to_destination, read_scnt_from_source, stream_segments_from_source, write_segments_to_destination
 from rck.core.structures import aligned_scnts, refined_scnt, cn_distance_inter_scnt
 from rck.utils.adj.process import KEEP, REMOVE
+from rck.utils.scn.process import iter_haploid_segments
 
 
 def main():
@@ -60,6 +61,12 @@ def main():
     filter_parser.add_argument("--remove-extra-field-missing-strategy", choices=[KEEP, REMOVE], default=KEEP)
     filter_parser.add_argument("--min-size", type=int, default=0)
     filter_parser.add_argument("--max-size", type=int, default=1000000000)
+    ###
+    haploid_parser = subparsers.add_parser("haploid", parents=[cli_logging_parser])
+    haploid_parser.add_argument("scnt", type=argparse.FileType("rt"), default=sys.stdin)
+    haploid_parser.add_argument("--separator", default="\t")
+    haploid_parser.add_argument("--extra-separator", default=";")
+    haploid_parser.add_argument("--output", "-o", type=argparse.FileType("wt"), default=sys.stdout)
     ###
     args = parser.parse_args()
     logger = get_standard_logger_from_args(args=args, program_name="RCK-UTILS-SCNT-process")
@@ -122,6 +129,10 @@ def main():
             write_scnt_to_file(file_name=scnt_path, segments=segments, scnt=scnt, separator=args.separator)
     elif args.command == "filter":
         pass
+    elif args.command == "haploid":
+        segments = stream_segments_from_source(source=args.scnt, separator=args.separator, extra_separator=args.extra_separator)
+        haploid_segments = iter_haploid_segments(segments=segments, copy=False)
+        write_segments_to_destination(destination=args.output, segments=haploid_segments)
     elif args.command == "distance":
         clone_ids = args.clone_ids
         if args.clone_ids is not None:
@@ -143,4 +154,4 @@ def main():
 
 
 if __name__ == "__main__":
-    pass
+    main()

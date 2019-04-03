@@ -330,6 +330,16 @@ def write_segments_to_file(file_name, segments, separator="\t", extra="all", ext
                                       extra=extra, extra_separator=extra_separator, extra_fill=extra_fill, sort_segments=sort_segments)
 
 
+def stringify_segment_cn_entry(entry):
+    result = {}
+    for clone_id in entry.keys():
+        clone_specific_entries = {}
+        for haplotype in entry[clone_id]:
+            clone_specific_entries[str(haplotype)] = entry[clone_id][haplotype]
+        result[clone_id] = clone_specific_entries
+    return str(result)
+
+
 def write_segments_to_destination(destination, segments, separator="\t", extra="all", extra_separator=";", extra_fill="", sort_segments=True):
     if sort_segments:
         segments = sorted(segments, key=lambda s: (s.chromosome, s.start_position.coordinate, s.end_position.coordinate))
@@ -347,10 +357,19 @@ def write_segments_to_destination(destination, segments, separator="\t", extra="
             extra_strings = []
             if extra_description_is_all(extra=extra):
                 for key, value in segment.extra.items():
+                    if isinstance(value, (list, tuple)):
+                        value = ",".join(map(str, value))
+                    elif key == COPY_NUMBER and isinstance(value, (dict, defaultdict)):
+                        value = stringify_segment_cn_entry(entry=value)
                     extra_strings.append("{extra_name}={extra_value}".format(extra_name=key.lower(), extra_value=value if value is not None else extra_fill))
             else:
                 for entry in extra:
-                    extra_strings.append("{extra_name}={extra_value}".format(extra_name=str(entry).lower(), extra_value=segment.extra.get(entry, extra_fill)))
+                    value = segment.extra.get(entry, extra_fill)
+                    if isinstance(value, (list, tuple)):
+                        value = ",".join(map(str, value))
+                    elif entry == COPY_NUMBER and isinstance(value, (dict, defaultdict)):
+                        value = stringify_segment_cn_entry(entry=value)
+                    extra_strings.append("{extra_name}={extra_value}".format(extra_name=str(entry).lower(), extra_value=value))
             extra_string = extra_separator.join(extra_strings)
             data[EXTRA] = extra_string
         writer.writerow(data)

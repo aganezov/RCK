@@ -1,7 +1,8 @@
 from collections import defaultdict
 from copy import deepcopy
 
-from rck.core.structures import Strand, Position, sorted_segments_donot_overlap
+from rck.core.io import COPY_NUMBER
+from rck.core.structures import Strand, Position, sorted_segments_donot_overlap, Haplotype, SegmentCopyNumberProfile
 
 
 def refined_segments(segments, additional_positions=None, additional_positions_by_chrs=None):
@@ -130,3 +131,33 @@ def filter_segments_by_chromosomal_regions(segments, include=None, exclude=None,
         if retain:
             yield segment
 
+
+def iter_haploid_segments(segments, copy=True):
+    for segment in segments:
+        result = segment
+        if copy:
+            result = deepcopy(segment)
+        if COPY_NUMBER in result.extra:
+            cn_entry = result.extra[COPY_NUMBER]
+            result_cn_entry = {}
+            for clone_id, cn_dict in cn_entry.items():
+                new_cn_dict = {Haplotype.A: sum(cn_dict.values())}
+                result_cn_entry[clone_id] = new_cn_dict
+            result.extra[COPY_NUMBER] = result_cn_entry
+        yield result
+
+
+def haploid_segments(segments, copy=True):
+    return list(iter_haploid_segments(segments=segments, copy=copy))
+
+
+def get_haploid_scnt(segments, scnt):
+    result = {clone_id: SegmentCopyNumberProfile() for clone_id in sorted(scnt.keys())}
+    for segment in segments:
+        sid = segment.stable_id_non_hap
+        for clone_id in result.keys():
+            result_scnp: SegmentCopyNumberProfile = result[clone_id]
+            source_scnp: SegmentCopyNumberProfile = scnt[clone_id]
+            total_cn = source_scnp.get_combined_cn(sid=sid)
+            result_scnp.set_cn_record(sid=sid, hap=Haplotype.A, cn=total_cn)
+    return result
