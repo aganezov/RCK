@@ -4,6 +4,8 @@ import os
 import sys
 from collections import defaultdict
 
+from utils.adj.process import iter_haploid_adjacencies
+
 current_file_level = 3
 current_dir = os.path.dirname(os.path.realpath(__file__))
 for _ in range(current_file_level):
@@ -60,6 +62,9 @@ def main():
     reciprocal_parser = subparsers.add_parser("reciprocal", parents=[shared_parser, cli_logging_parser], help="ensure that reciprocal novel adjacencies are treated as such")
     reciprocal_parser.add_argument("rck_adj", type=argparse.FileType("rt"), default=sys.stdin)
     reciprocal_parser.add_argument("--max-distance", type=int, default=50)
+    ####
+    haploid_parser = subparsers.add_parser("haploid", parents=[shared_parser, cli_logging_parser], help="collapse any info that is allele/haplotype-specific into a haploid mode")
+    haploid_parser.add_argument("rck_adj", type=argparse.FileType("rt"), nargs="+", default=[sys.stdin])
     ####
     # merge = subparsers.add_parser("merge", parents=[shared_parser, cli_logging_parser], help="EXPERIMENTAL! Merge Adjacencies in input files (NOTE: different from \"cat\").")
     # merge.add_argument("rck_adj", type=argparse.FileType("rt"), nargs="+", default=[sys.stdin])
@@ -180,7 +185,11 @@ def main():
     elif args.command == "reciprocal":
         adjacencies = read_adjacencies_from_source(source=args.rck_adj)
         processed_adjacencies = refined_adjacencies_reciprocal(novel_adjacencies=adjacencies, max_distance=args.max_distance, inplace=True)
-
+    elif args.command == "haploid":
+        adjacencies = itertools.chain(*(stream_adjacencies_from_source(source=rck_adj_source) for rck_adj_source in args.rck_adj))
+        haploid_adjacencies = iter_haploid_adjacencies(adjacencies=adjacencies, copy=False)
+        write_adjacencies_to_destination(destination=args.rck_adj_file, adjacencies=haploid_adjacencies, sort_adjacencies=False, extra=extra)
+        exit(0)
     if len(processed_adjacencies) > 0:
         write_adjacencies_to_destination(destination=args.rck_adj_file, adjacencies=processed_adjacencies, extra=extra, sort_adjacencies=args.sort)
 

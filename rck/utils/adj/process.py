@@ -9,6 +9,7 @@ from sortedcontainers import SortedList
 import statistics
 
 from core.io import stringify_adjacency_cn_entry, ADJACENCY_TYPE
+from core.structures import Phasing, AdjacencyCopyNumberProfile
 from rck.core.io import EXTERNAL_NA_ID, COPY_NUMBER
 from rck.core.structures import Strand, Adjacency, Position
 from rck.utils.adj.convert import GUNDEM_PER_SAMPLE_SUPPORT
@@ -453,6 +454,37 @@ def refined_adjacencies_reciprocal(novel_adjacencies, max_distance, inplace=Fals
                     update_position_in_adjacency(adjacency=adj, old_position=rp, new_position=new_p2)
                 suitable_for_merging = False
     return novel_adjacencies
+
+
+def iter_haploid_adjacencies(adjacencies, copy=True):
+    for adj in adjacencies:
+        result = adj
+        if copy:
+            result = deepcopy(adj)
+        if COPY_NUMBER in result.extra:
+            cn_entry = result.extra[COPY_NUMBER]
+            result_cn_entry = {}
+            for clone_id, cn_dict in cn_entry.items():
+                new_cn_dict = {Phasing.AA: sum(cn_dict.values())}
+                result_cn_entry[clone_id] = new_cn_dict
+            result.extra[COPY_NUMBER] = result_cn_entry
+        yield result
+
+
+def haploid_adjacencies(adjacencies, copy=True):
+    return list(iter_haploid_adjacencies(adjacencies=adjacencies, copy=copy))
+
+
+def get_haploid_acnt(adjacencies, acnt):
+    result = {clone_id: AdjacencyCopyNumberProfile() for clone_id in sorted(acnt.keys())}
+    for adj in adjacencies:
+        aid = adj.stable_id_non_phased
+        for clone_id in result.keys():
+            result_acnp: AdjacencyCopyNumberProfile = result[clone_id]
+            source_acnp: AdjacencyCopyNumberProfile = acnt[clone_id]
+            total_cn = source_acnp.get_combined_cn(aid=aid)
+            result_acnp.set_cn_record(aid=aid, phasing=Phasing.AA, cn=total_cn)
+    return result
 
 
 def positions_are_reciprocal(p1, p2, max_distance):
