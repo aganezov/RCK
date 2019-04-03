@@ -805,7 +805,7 @@ def extract_acnt_from_adjacencies(adjacencies, clone_ids=None):
                 raise ValueError("Clone {cid} is not present in CN data for adjacency {adj}".format(cid=clone_id, adj=aid))
             for phasing in cn_data[clone_id]:
                 acnp = acnt[clone_id]
-                acnp._set_cn_record(aid=aid, phasing=phasing, cn=cn_data[clone_id][phasing])
+                acnp.set_cn_record(aid=aid, phasing=phasing, cn=cn_data[clone_id][phasing])
     return acnt
 
 
@@ -859,7 +859,7 @@ def read_acnt_old(file_name, clone_ids, separator="\t", cn_separator=";"):
                     raise Exception()
                 for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]:
                     acnp = result[clone_id]
-                    acnp._set_cn_record(aid=aid, phasing=ph, cn=cns[clone_id][ph])
+                    acnp.set_cn_record(aid=aid, phasing=ph, cn=cns[clone_id][ph])
     return adjacencies, result
 
 

@@ -768,7 +768,7 @@ class OptModelMultiClone(object):
                 aid = adj.stable_id_non_phased
                 for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]:
                     cn = int(round(self.variables[PROD][PY][clone_id][aid][ph].X))
-                    acnp.set_cnt_record_for_adjacency(adjacency=adj, cn=cn, phasing=ph)
+                    acnp.set_cn_record_for_adjacency(adjacency=adj, cn=cn, phasing=ph)
         return result
 
     def alleles_sync_result(self, segment):

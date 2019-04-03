@@ -689,15 +689,15 @@ class AdjacencyCopyNumberProfile(object):
     def __init__(self):
         self.records = defaultdict(dict)
 
-    def _set_cn_record(self, aid, phasing, cn, check_cn_value=False):
+    def set_cn_record(self, aid, phasing, cn, check_cn_value=False):
         if check_cn_value and cn < 0:
             raise ValueError()
         self.records[aid][phasing] = cn
 
-    def set_cnt_record_for_adjacency(self, adjacency, cn, phasing=Phasing.AA, check_cn_value=False):
+    def set_cn_record_for_adjacency(self, adjacency, cn, phasing=Phasing.AA, check_cn_value=False):
         phasing = adjacency.get_phasing(sort=True, default=phasing)
         aid = adjacency.stable_id_non_phased
-        self._set_cn_record(aid=aid, phasing=phasing, cn=cn, check_cn_value=check_cn_value)
+        self.set_cn_record(aid=aid, phasing=phasing, cn=cn, check_cn_value=check_cn_value)
 
     def get_phase_aware_cn_by_adj_and_phasing(self, adjacency, phasing, default=0):
         aid = adjacency.stable_id_non_phased
@@ -755,7 +755,7 @@ class AdjacencyCopyNumberProfile(object):
         for adjacency in genome.iter_adjacencies():
             phasing = adjacency.get_phasing(sort=False, default=default_phasing)
             current_value = result.get_phase_aware_cn_by_adj_and_phasing(adjacency=adjacency, phasing=phasing, default=0)
-            result.set_cnt_record_for_adjacency(adjacency=adjacency, cn=current_value + 1, phasing=phasing)
+            result.set_cn_record_for_adjacency(adjacency=adjacency, cn=current_value + 1, phasing=phasing)
         return result
 
     def aid_keys(self):
@@ -781,7 +781,7 @@ class AdjacencyCopyNumberProfile(object):
                 for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]:
                     current_cn = result.get_cn(aid=aid, phasing=ph)
                     profile_specific = acnp.get_cn(aid=aid, phasing=ph)
-                    result._set_cn_record(aid=aid, phasing=ph, cn=current_cn + profile_specific)
+                    result.set_cn_record(aid=aid, phasing=ph, cn=current_cn + profile_specific)
         return result
 
 
