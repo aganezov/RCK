@@ -5,6 +5,7 @@ from rck.core.graph import IntervalAdjacencyGraph
 from rck.core.io import FALSE_POSITIVE, EXTERNAL_NA_ID, AG_LABELING
 from rck.core.structures import Phasing, AdjacencyType, Haplotype, get_aabb_for_ra, get_abba_for_na_and_position
 from rck.core.structures import SegmentCopyNumberProfile, AdjacencyCopyNumberProfile, check_and_fill_segments_to_fragments, AdjacencyGroupType, CNBoundaries
+from utils.scn.process import get_haploid_scnt
 
 FRAGMENT_ALLELE = "fragment_flipping"
 SEGMENT_COPY_NUMBER = "segment_copy_number"
@@ -155,12 +156,16 @@ class OptModelMultiClone(object):
                  hapl_segments_to_fragments=None,
                  hapl_nov_adjacencies_fp=0.0,
                  starting_vars=None,
+                 solve_as_haploid=False,
                  extra=None):
         self.scnb = scnb
         self.hapl_segments = hapl_segments
         self.hapl_adjacencies = hapl_adjacencies
         self.hapl_nov_adjacencies_fp = hapl_nov_adjacencies_fp
+        self.solve_as_haploid = solve_as_haploid
         self.scnt = scnt
+        if self.solve_as_haploid:
+            self.scnt = get_haploid_scnt(segments=self.hapl_segments, scnt=self.scnt)
         self.hapl_telomeres = hapl_telomeres
         self.hapl_adjacencies_groups = hapl_adjacencies_groups if hapl_adjacencies_groups is not None else []
         hapl_segments_to_fragments = check_and_fill_segments_to_fragments(segments=hapl_segments, segments_to_fragments=hapl_segments_to_fragments)
@@ -430,6 +435,23 @@ class OptModelMultiClone(object):
         self.define_constraints_for_adjacency_groups()
         self.define_constraints_on_nodes()
         self.define_constraints_on_deltas()
+        if self.solve_as_haploid:
+            self.define_allele_flipping_haploid_constraints()
+
+    def define_allele_flipping_haploid_constraints(self):
+        """
+        When solving a haploid version of the problem, we don't need allele flipping possibility enabled.
+        We thus fix the respecting binary variables at 1 (i.e., cn on haplotype A equal to allele A in the input),
+            which coupled with the "haploidazation" of the input SCNT in the init, as well as forced 0-0 bounds on haplotype B to have the CN on segment B always at 0,
+            and not contributing to the problem solution at all.
+
+        """
+        for clone_id in self.clone_ids:
+            for segment in self.hapl_segments:
+                sid = segment.stable_id_non_hap
+                fid = self.hapl_segments_to_fragments[sid]
+                f_var = self.variables[FRAGMENT_ALLELE][fid]
+                self.gm.addConstr(f_var, g.GRB.EQUAL, 1, name="allele-flipping-fix-haploid-{{{cid},{fid}}}".format(cid=clone_id, fid=str(fid)))
 
     def define_segment_copy_number_boundary_constraints(self):
         """
@@ -456,6 +478,11 @@ class OptModelMultiClone(object):
                 lower_b = self.scnb[clone_id].get_cnb(sid=sid, hap=Haplotype.B, boundary_type=CNBoundaries.LOWER)
                 upper_a = self.scnb[clone_id].get_cnb(sid=sid, hap=Haplotype.A, boundary_type=CNBoundaries.UPPER)
                 upper_b = self.scnb[clone_id].get_cnb(sid=sid, hap=Haplotype.B, boundary_type=CNBoundaries.UPPER)
+                ####
+                # IF we are solving a haploid version of the problem, we must force the segment copy numbers on haplotype B to be equal to 0
+                ####
+                if self.solve_as_haploid:
+                    lower_b, upper_b = 0, 0
                 ####
                 self.gm.addConstr(s_cn_a_var, g.GRB.LESS_EQUAL, f_var * upper_a + (1 - f_var) * upper_b, name="scnb-A-upper-{{{cid},{sid}}}".format(cid=clone_id, sid=sid))
                 self.gm.addConstr(s_cn_a_var, g.GRB.GREATER_EQUAL, f_var * lower_a + (1 - f_var) * lower_b, name="scnb-A-lower-{{{cid},{sid}}}".format(cid=clone_id, sid=sid))
@@ -508,6 +535,14 @@ class OptModelMultiClone(object):
                     self.gm.addConstr(self.variables[P][clone_id][aid][ph], g.GRB.EQUAL, 0, name="ph_{{r,{cid},{aid},{phas}}}".format(cid=str(clone_id),
                                                                                                                                       aid=str(aid),
                                                                                                                                       phas=str(ph)))
+                ###
+                # If we are solving the problem in the haploid setting, we can not have BB reference adjacency present (i.e., CN must be equal to 0, we are achieving it
+                #   via fixing binary indicator at 0)
+                ###
+                if self.solve_as_haploid:
+                    self.gm.addConstr(self.variables[P][clone_id][aid][Phasing.BB], g.GRB.EQUAL, 0, name="ph_{{r,{cid},{aid},hapl-{phas}}}".format(cid=str(clone_id),
+                                                                                                                                                   aid=str(aid),
+                                                                                                                                                   phas=str(Phasing.BB)))
 
     def define_constraints_nov_adjacency_overall_presence(self):
         fp_lin_expr = g.LinExpr()
@@ -540,6 +575,13 @@ class OptModelMultiClone(object):
             ###
             if adjacency.is_self_loop_hapl:
                 for ph in [Phasing.AB, Phasing.BA]:
+                    self.gm.addConstr(self.variables[PROD][PP][aid][ph], g.GRB.EQUAL, 0)
+            ###
+            # If we are solving the problem in a haploid setting, then we must force every labeling choice, except for AA one, to not be present
+            # (i.e., indicator forced to equal to 0)
+            ###
+            if self.solve_as_haploid:
+                for ph in [Phasing.AB, Phasing.BA, Phasing.BB]:
                     self.gm.addConstr(self.variables[PROD][PP][aid][ph], g.GRB.EQUAL, 0)
 
     def define_constraints_on_each_location(self):
@@ -627,6 +669,8 @@ class OptModelMultiClone(object):
             self.gm.addConstr(fp_lin_expr, g.GRB.GREATER_EQUAL, g.LinExpr(1 - fp), name="general_group-fp_{{{gid}}}".format(gid=adj_group.gid))
 
     def define_constraints_for_adjacency_groups_labeling(self):
+        if self.solve_as_haploid:
+            return
         self.hapl_adjacencies_by_external_ids = {adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased): adj for adj in self.hapl_adjacencies}
         for adj_group in filter(lambda ag: ag.group_type == AdjacencyGroupType.LABELING, self.hapl_adjacencies_groups):
             aids = adj_group.adjacencies_ids

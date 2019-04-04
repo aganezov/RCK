@@ -101,6 +101,7 @@ def main():
     ###
     run_group = parser.add_argument_group()
     run_group.add_argument("--no-run", action="store_false", dest="do_run")
+    run_group.add_argument("--run-haploid", action="store_true", dest="run_haploid")
     run_group.add_argument("--run-presolve-nas-threshold", type=int, default=5000)
     run_group.add_argument("--run-g-mip-gap", type=float, default=0.015)
     run_group.add_argument("--run-g-time-limit", type=int, default=28800)
@@ -139,6 +140,9 @@ def main():
 
     workdir = args.workdir if args.workdir is not None else "RCK-{date}".format(date=str(datetime.date.today()))
     workdir_path = get_full_path(path=workdir)
+    if args.run_haploid:
+        logger.warning("Solving the problem as if the reference was haploid. "
+                       "This, while producing some results, may limit and/or obscure underlying structural variations in the analyzed cancer genome")
     logger.debug("Working directory is set as {workdir_path}".format(workdir_path=workdir_path))
 
     logger.debug("Creating working directory if does not exist")
@@ -487,6 +491,7 @@ def main():
                                            hapl_segments_to_fragments=chr_segments_to_fragments,
                                            hapl_adjacencies_groups=chr_groups,
                                            scnb=scnb,
+                                           solve_as_haploid=args.run_haploid,
                                            hapl_nov_adjacencies_fp=overall_nas_fp,
                                            extra=extra)
             logger.debug("Building variables and constraints")
@@ -498,6 +503,8 @@ def main():
             ilp_model.gm.setParam("LogFile", gurobi_log_path)
             ilp_model.gm.setParam("TimeLimit", args.run_g_time_limit)
             ilp_model.gm.setParam("Threads", args.run_g_threads)
+            if args.run_haploid:
+                logger.warning("Problem is being solved as if the underlying reference is haploid.")
             logger.info("Starting Gurobi to solve the optimization problem")
             ilp_model.solve_model()
             logger.info("Gurobi model solving has ended")
@@ -556,6 +563,7 @@ def main():
                                    scnb=scnb,
                                    hapl_nov_adjacencies_fp=overall_nas_fp,
                                    starting_vars=presolved_vars,
+                                   solve_as_haploid=args.run_haploid,
                                    extra=extra)
     logger.debug("Building variables and constraints")
     ilp_model.build_gurobi_model()
@@ -567,6 +575,8 @@ def main():
     ilp_model.gm.setParam("TimeLimit", args.run_g_time_limit)
     ilp_model.gm.setParam("Threads", args.run_g_threads)
     logger.info("Starting Gurobi to solve the optimization problem")
+    if args.run_haploid:
+        logger.warning("Problem is being solved as if the underlying reference is haploid.")
     ilp_model.solve_model()
 
     logger.info("Gurobi model solving has ended")
@@ -593,15 +603,14 @@ def main():
         logger.error("Inference was unsuccessful")
         exit(1)
 
-    # ilp_model.gm.write(os.path.join(output_dir), "gurobi.mps")
     ilp_model.gm.write(os.path.join(output_dir, "gurobi.lp"))
     with open(os.path.join(output_dir, "gurobi.sol"), "wt") as destination:
         for var in ilp_model.gm.getVars():
             print(var.VarName, var.X, file=destination)
-    # ilp_model.gm.write(os.path.join(output_dir, "gurobi.sol"))
-    # ilp_model.gm.update()
 
     logger.info("Gurobi finished execution with status {status}".format(status=status))
+    if args.run_haploid:
+        logger.warning("Problem has been solved as if the underlying reference is haploid. Inferred copy number data is not truly diploid.")
     logger.info("Extracting inferred diploid segment copy number data")
     scnt = ilp_model.get_scnt_from_model()
     logger.info("Extracting inferred diploid adjacency copy number data")
@@ -644,6 +653,8 @@ def main():
                 lower_b = scnbp.get_cnb(sid=sid, hap=Haplotype.B, boundary_type=CNBoundaries.LOWER)
                 upper_a = scnbp.get_cnb(sid=sid, hap=Haplotype.A, boundary_type=CNBoundaries.UPPER)
                 upper_b = scnbp.get_cnb(sid=sid, hap=Haplotype.B, boundary_type=CNBoundaries.UPPER)
+                if args.run_haploid:
+                    lower_b, upper_b = 0, 0
                 if sync_indicator == 1:
                     if (not lower_a <= cna <= upper_a) or (not lower_b <= cnb <= upper_b):
                         problems = True
