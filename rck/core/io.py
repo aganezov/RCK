@@ -645,6 +645,45 @@ def get_vcf_format_string(adjacency, clone_id, format_fields, extra_fill=""):
     return ":".join(result)
 
 
+CIRCA_SIZE = "size"
+
+
+def write_adjacencies_to_circa_file(file_name, adjacencies, size_extra_field=None, size_extra_seq_field=None, size_abs=True):
+    with open(file_name, "wt") as dest:
+        write_adjacencies_to_circa_destination(destination=dest, adjacencies=adjacencies, size_extra_field=size_extra_field,
+                                               size_extra_seq_field=size_extra_seq_field, size_abs=size_abs)
+
+
+def write_adjacencies_to_circa_destination(destination, adjacencies, size_extra_field=None, size_extra_seq_field=None, size_abs=True):
+    header_entries = [AID, CHR1, COORD1, STRAND1, CHR2, COORD2, STRAND2, CIRCA_SIZE]
+    writer = csv.DictWriter(destination, fieldnames=header_entries, delimiter="\t")
+    for adj in adjacencies:
+        data = {}
+        data[AID] = adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased)
+        data[CHR1] = adj.position1.chromosome
+        data[COORD1] = adj.position1.coordinate
+        data[STRAND1] = adj.position1.strand
+        data[CHR2] = adj.position2.chromosome
+        data[COORD2] = adj.position2.coordinate
+        data[STRAND2] = adj.position2.strand
+        adj_size = None
+        try:
+            adj_size = int(adj.extra[size_extra_field])
+            if size_abs:
+                adj_size = abs(adj_size)
+        except (KeyError, ValueError):
+            pass
+        if adj_size is None:
+            try:
+                adj_size = len(adj.extra[size_extra_seq_field])
+            except (KeyError, ValueError):
+                pass
+        if adj_size is None:
+            adj_size = adj.distance_non_hap
+        data[CIRCA_SIZE] = adj_size
+        writer.writerow(data)
+
+
 class VCFOutputFormat(Enum):
     SNIFFLES = "Sniffles"
     VCFProper = "VCF"
