@@ -646,6 +646,7 @@ def get_vcf_format_string(adjacency, clone_id, format_fields, extra_fill=""):
 
 
 CIRCA_SIZE = "size"
+CIRCA_MID_POSITION = "mid_position"
 
 
 def write_adjacencies_to_circa_file(file_name, adjacencies, size_extra_field=None, size_extra_seq_field=None, size_abs=True):
@@ -655,8 +656,9 @@ def write_adjacencies_to_circa_file(file_name, adjacencies, size_extra_field=Non
 
 
 def write_adjacencies_to_circa_destination(destination, adjacencies, size_extra_field=None, size_extra_seq_field=None, size_abs=True):
-    header_entries = [AID, CHR1, COORD1, STRAND1, CHR2, COORD2, STRAND2, CIRCA_SIZE]
+    header_entries = [AID, CHR1, COORD1, STRAND1, CHR2, COORD2, STRAND2, CIRCA_SIZE, CIRCA_MID_POSITION]
     writer = csv.DictWriter(destination, fieldnames=header_entries, delimiter="\t")
+    writer.writeheader()
     for adj in adjacencies:
         data = {}
         data[AID] = adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased)
@@ -666,6 +668,9 @@ def write_adjacencies_to_circa_destination(destination, adjacencies, size_extra_
         data[CHR2] = adj.position2.chromosome
         data[COORD2] = adj.position2.coordinate
         data[STRAND2] = adj.position2.strand
+        data[CIRCA_MID_POSITION] = adj.position1.coordinate + abs(adj.position1.coordinate - adj.position2.coordinate)
+        if adj.position1.chromosome != adj.position2.chromosome:
+            data[CIRCA_MID_POSITION] = -1
         adj_size = None
         try:
             adj_size = int(adj.extra[size_extra_field])
