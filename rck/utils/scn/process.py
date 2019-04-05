@@ -1,8 +1,9 @@
 from collections import defaultdict
 from copy import deepcopy
 
-from rck.core.io import COPY_NUMBER
+from rck.core.io import COPY_NUMBER, stringify_adjacency_cn_entry
 from rck.core.structures import Strand, Position, sorted_segments_donot_overlap, Haplotype, SegmentCopyNumberProfile
+from utils.adj.process import REMOVE
 
 
 def refined_segments(segments, additional_positions=None, additional_positions_by_chrs=None):
@@ -98,7 +99,7 @@ def lies_within(segment, segments, fully=False):
     return False
 
 
-def filter_segments_by_chromosomal_regions(segments, include=None, exclude=None, include_full=True):
+def filter_segments_by_chromosomal_regions(segments, include=None, exclude=None, include_full=True, exclude_full=False):
     if include is None:
         include = []
     if exclude is None:
@@ -127,7 +128,7 @@ def filter_segments_by_chromosomal_regions(segments, include=None, exclude=None,
             continue
         exclude_segments_chr = exclude_by_chr.get(chromosome, [])
         if len(exclude_segments_chr) != 0:
-            retain = not lies_within(segment=segment, segments=exclude_segments_chr, fully=include_full)
+            retain = not lies_within(segment=segment, segments=exclude_segments_chr, fully=exclude_full)
         if retain:
             yield segment
 
@@ -161,3 +162,52 @@ def get_haploid_scnt(segments, scnt):
             total_cn = source_scnp.get_combined_cn(sid=sid)
             result_scnp.set_cn_record(sid=sid, hap=Haplotype.A, cn=total_cn)
     return result
+
+
+def filter_segments_by_extra(segments, keep_extra_field=None, keep_extra_field_missing_strategy=None, remove_extra_field=None, remove_extra_field_missing_strategy=None):
+    for segment in segments:
+        if keep_extra_field is not None and len(keep_extra_field) > 0:
+            keep = False
+            for field, regex_list in keep_extra_field.items():
+                for regex in regex_list:
+                    if field in segment.extra:
+                        data = segment.extra[field]
+                        if not isinstance(data, str):
+                            if field == COPY_NUMBER:
+                                data = stringify_adjacency_cn_entry(entry=data)
+                            else:
+                                data = str(data)
+                        if regex.search(data) is not None:
+                            keep = True
+                    elif keep_extra_field_missing_strategy == REMOVE:
+                        keep = keep or False
+            if not keep:
+                continue
+
+        if remove_extra_field is not None and len(remove_extra_field) > 0:
+            keep = True
+            for field, regex_list in remove_extra_field.items():
+                for regex in regex_list:
+                    if field in segment.extra:
+                        data = segment.extra[field]
+                        if not isinstance(data, str):
+                            if field == COPY_NUMBER:
+                                data = stringify_adjacency_cn_entry(entry=data)
+                            else:
+                                data = str(data)
+                        if regex.search(data) is not None:
+                            keep = False
+                            break
+                    elif remove_extra_field_missing_strategy == REMOVE:
+                        keep = False
+                        break
+            if not keep:
+                continue
+        yield segment
+
+
+def filter_segments_by_size(segments, min_size=0, max_size=1000000000):
+    for segment in segments:
+        size = abs(segment.end_coordinate - segment.start_coordinate)
+        if min_size <= size <= max_size:
+            yield segment
