@@ -689,6 +689,23 @@ def write_adjacencies_to_circa_destination(destination, adjacencies, size_extra_
         writer.writerow(data)
 
 
+def write_segments_to_circa_destination(destination, segments, extra=None, extra_fill="."):
+    header_entries = [CHR, START, END, CIRCA_MID_POSITION]
+    if extra is not None:
+        header_entries.extend(extra)
+    writer = csv.DictWriter(destination, fieldnames=header_entries, delimiter="\t")
+    writer.writeheader()
+    for segment in segments:
+        data = {}
+        data[CHR] = segment.chromosome
+        data[START] = segment.start_coordinate
+        data[END] = segment.end_coordinate
+        data[CIRCA_MID_POSITION] = int(segment.start_coordinate + abs(segment.end_coordinate - segment.start_coordinate) / 2)
+        for entry in extra:
+            data[entry] = segment.extra.get(entry, extra_fill)
+        writer.writerow(data)
+
+
 class VCFOutputFormat(Enum):
     SNIFFLES = "Sniffles"
     VCFProper = "VCF"
@@ -1219,3 +1236,14 @@ def write_scnt_to_shatterseek_file(file_name, segments, scnt, clone_id=None, def
 
 def get_full_path(path):
     return os.path.abspath(os.path.expanduser(path))
+
+
+def read_chr_sizes_from_source(source):
+    result = {}
+    for line in source:
+        line = line.strip()
+        if len(line) == 0 or line.startswith("#"):
+            continue
+        data = line.split("\t")
+        result[data[0]] = int(data[1])
+    return result

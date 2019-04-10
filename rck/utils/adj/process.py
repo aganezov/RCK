@@ -7,7 +7,7 @@ from sortedcontainers import SortedList
 import statistics
 
 from rck.core.io import EXTERNAL_NA_ID, COPY_NUMBER, stringify_adjacency_cn_entry, ADJACENCY_TYPE
-from rck.core.structures import Strand, Adjacency, Position, Phasing, AdjacencyCopyNumberProfile
+from rck.core.structures import Strand, Adjacency, Position, Phasing, AdjacencyCopyNumberProfile, Segment
 from rck.utils.adj.convert import GUNDEM_PER_SAMPLE_SUPPORT
 
 ORIGIN_IDS = "origin_ids"
@@ -505,3 +505,105 @@ def update_position_in_adjacency(adjacency, old_position, new_position):
         adjacency.position1 = deepcopy(new_position)
     if adjacency.position2 == old_position:
         adjacency.position2 = deepcopy(new_position)
+
+
+def element_before_window(window, element, adj_full_cnt=True):
+    """
+    Returning True in every ambiguous situation, as that simply skips the element
+    """
+    if isinstance(element, Position):
+        return element.coordinate < window.start_coordinate
+    elif isinstance(element, Adjacency):
+        p1_same_chr = element.position1.chromosome == window.chromosome
+        p2_same_chr = element.position2.chromosome == window.chromosome
+        if adj_full_cnt:
+            if not (p1_same_chr and p2_same_chr):
+                return True
+            if (p1_same_chr and element.position1.coordinate < window.start_coordinate) or (p2_same_chr and element.position2.coordinate < window.start_coordinate):
+                return True
+            return False
+        else:
+            if p1_same_chr and element.position1.coordinate < window.start_coordinate:
+                return True
+            elif p2_same_chr and element.position2.coordinate < window.start_coordinate:
+                return True
+            else:
+                return False
+    return True
+
+
+def element_in_window(window, element,  adj_full_cnt=True):
+    if isinstance(element, Position):
+        return window.start_coordinate <= element.coordinate <= window.end_coordinate
+    elif isinstance(element, Adjacency):
+        p1_same_chr = element.position1.chromosome == window.chromosome
+        p2_same_chr = element.position2.chromosome == window.chromosome
+        p1_in = p1_same_chr and window.start_coordinate <= element.position1.coordinate <= window.end_coordinate
+        p2_in = p2_same_chr and window.start_coordinate <= element.position2.coordinate <= window.end_coordinate
+        if adj_full_cnt:
+            cnt = p1_in and p2_in
+        else:
+            cnt = p1_in or p2_in
+        return cnt
+    return False
+
+
+def get_circa_adj_cnt(adjacencies, window_size=10000000, chr_sizes=None, element="breakend", adj_full_cnt=True):
+    result = defaultdict(int)
+    adjacencies_ids_by_chrs = defaultdict(set)
+    adjacencies_by_ids = {adj.stable_id_non_phased: adj for adj in adjacencies}
+    for adj in adjacencies_by_ids.values():
+        adjacencies_ids_by_chrs[adj.position1.chromosome].add(adj.stable_id_non_phased)
+        adjacencies_ids_by_chrs[adj.position2.chromosome].add(adj.stable_id_non_phased)
+    adjacencies_by_chr = defaultdict(list)
+    for chr_name in list(adjacencies_ids_by_chrs.keys()):
+        sorted_chr_adjacencies = sorted([adjacencies_by_ids[aid] for aid in adjacencies_ids_by_chrs[chr_name]],
+                                        key=lambda adj: (adj.position1.coordinate, adj.position2.coordinate))
+        adjacencies_by_chr[chr_name] = sorted_chr_adjacencies
+    windows_by_chr = defaultdict(list)
+    if chr_sizes is None:
+        chr_sizes = {}
+    for chr_name in set(chr_sizes.keys()) | set(adjacencies_by_chr.keys()):
+        start = 0
+        default = adjacencies_by_chr[chr_name][-1].position2.coordinate if chr_name in adjacencies_by_chr else 0
+        end = chr_sizes.get(chr_name, default)
+        windows_boundaries = list(range(start, end, window_size))
+        if windows_boundaries[-1] != end:
+            windows_boundaries.append(end)
+        for lb, rb in zip(windows_boundaries[:-1], windows_boundaries[1:]):
+            segment = Segment.from_chromosome_coordinates(chromosome=chr_name, start=lb+1, end=rb)
+            windows_by_chr[chr_name].append(segment)
+    # counted_entries = set()
+    for chr_name in windows_by_chr.keys():
+        chr_windows = iter(windows_by_chr[chr_name])
+        current_window = next(chr_windows, None)
+        elements = []
+        if element == "breakend":
+            for adj in adjacencies_by_chr[chr_name]:
+                for p in [adj.position1, adj.position2]:
+                    if p.chromosome == chr_name:
+                        elements.append(p)
+        elif element == "adj":
+            for adj in adjacencies_by_chr[chr_name]:
+                p1_in = adj.position1.chromosome == chr_name
+                p2_in = adj.position2.chromosome == chr_name
+                if adj_full_cnt:
+                    cnt = p1_in and p2_in
+                else:
+                    cnt = p1_in or p2_in
+                if cnt:
+                    elements.append(adj)
+        for entry in elements:
+            if current_window is None:
+                break
+            # element_id = element.stable_id_non_hap if isinstance(element, Position) else element.stable_id_non_phased
+            # if element_id in counted_entries:
+            #     continue
+            # counted_entries.add(element_id)
+            if element_before_window(current_window, entry, adj_full_cnt=adj_full_cnt):
+                continue
+            elif element_in_window(current_window, entry, adj_full_cnt=adj_full_cnt):
+                result[current_window] += 1
+            else:   # after window
+                current_window = next(chr_windows, None)
+    return result
