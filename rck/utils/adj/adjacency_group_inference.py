@@ -28,7 +28,8 @@ def infer_sniffles_molecule_groups(adjacencies, extra_rnames_field="rnames", gid
     return result
 
 
-def infer_short_nas_labeling_groups(adjacencies, gid_suffix="", max_size=1000, allow_intermediate_same=False, allow_intermediate_tra=False):
+def infer_short_nas_labeling_groups(adjacencies, gid_suffix="", max_size=1000, allow_intermediate_same=False, allow_intermediate_tra=False,
+                                    allow_inv_signatures=True):
     positions_to_adjacencies = defaultdict(list)
     positions_by_chrs = defaultdict(list)
     result = []
@@ -51,6 +52,8 @@ def infer_short_nas_labeling_groups(adjacencies, gid_suffix="", max_size=1000, a
         p1, p2 = adj.position1, adj.position2
         p1_chr, p2_chr = p1.chromosome, p2.chromosome
         if p1_chr != p2_chr:
+            continue
+        if not allow_inv_signatures and adj.position1.strand == adj.position2.strand:
             continue
         adj_size = adj.distance_non_hap
         if adj_size > max_size:

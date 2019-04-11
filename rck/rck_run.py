@@ -12,6 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 import rck
 from rck.utils.adj.process import refined_adjacencies_reciprocal, filter_adjacencies_by_chromosomal_regions
+from rck.utils.adj.adjacency_group_inference import infer_short_nas_labeling_groups
 from rck.utils.adj.adjacency_group_process import refined_labeling_groups, projected_groups
 from rck.core.io import read_adjacencies_from_file, write_acnt_to_file, get_logging_cli_parser, get_standard_logger_from_args, read_adjacency_groups_from_file, \
     read_segments_from_file, \
@@ -98,6 +99,15 @@ def main():
     pre_group.add_argument("--pre-adj-no-reciprocal", action="store_false", dest="pre_adj_reciprocal")
     pre_group.add_argument("--pre-adj-reciprocal-include-ref", action="store_true", dest="pre_adj_reciprocal_include_ref")
     pre_group.add_argument("--pre-adj-reciprocal-max-distance", type=int, default=50)
+    ###
+    pre_group.add_argument("--pre-no-adg", acntion="store_false", dest="do_pre_adg")
+    pre_group.add_argument("--pre-adg-sl-max-size", type=int, default=50000000)
+    pre_group.add_argument("--pre-adg-sl-allow-intermediate-same", action="store_true", dest="pre_adg_sl_allow_intermediate_same")
+    pre_group.add_argument("--pre-adg-sl-allow-intermediate-tra", action="store_true", dest="pre_adg_sl_allow_intermediate_tra")
+    pre_group.add_argument("--pre-adg-sl-no-inv-signatures", action="store_false", dets="pre_adg_sl_allow_inv_signature")
+    pre_group.add_argument("--pre-adg-sl-no-refine", action="store_false", dest="pre_adg_sl_refine")
+    pre_group.add_argument("--pre-adg-sl-fp", type=float, default=1)
+    pre_group.add_argument("--pre-adg-sl-gid-suffix", dest="pre_adg_sl_gid_suffix", default="rck-run-sL")
     ###
     run_group = parser.add_argument_group()
     run_group.add_argument("--no-run", action="store_false", dest="do_run")
@@ -278,6 +288,17 @@ def main():
     else:
         adjacency_groups = []
         logger.info("No information about adjacency groups was provided")
+
+    if args.do_preprocess and args.do_pre_scnt:
+        logger.info("Inferring short NAs labeling adjacency groups (to disable use the --pre-no-adg flag)")
+        short_inf_labeling_adjacency_groups = infer_short_nas_labeling_groups(adjacencies=[a for a in input_adjacencies if a.adjacency_type == AdjacencyType.NOVEL],
+                                                                              gid_suffix=args.pre_adg_sl_gid_suffix, max_size=args.pre_adg_sl_max_size,
+                                                                              allow_intermediate_same=args.pre_adg_sl_allow_intermediate_same,
+                                                                              allow_intermediate_tra=args.pre_adg_sl_allow_intermediate_tra,
+                                                                              allow_inv_signatures=args.pre_adg_sl_allow_inv_signature)
+        logger.info("Inferred {cnt} short NAs labeling adjacency groups".format(cnt=len(short_inf_labeling_adjacency_groups)))
+        logger.info("Extending (if any) input adjacency group with the inferred ones. If any duplications are present, they will be taken care of during the refinement process")
+        adjacency_groups.extend(short_inf_labeling_adjacency_groups)
 
     fragments_file_path = None if args.fragments in (None, "") else get_full_path(path=args.fragments)
     if fragments_file_path is not None:
