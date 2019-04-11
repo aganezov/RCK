@@ -100,7 +100,7 @@ def main():
     pre_group.add_argument("--pre-adj-reciprocal-include-ref", action="store_true", dest="pre_adj_reciprocal_include_ref")
     pre_group.add_argument("--pre-adj-reciprocal-max-distance", type=int, default=50)
     ###
-    pre_group.add_argument("--pre-no-adg", acntion="store_false", dest="do_pre_adg")
+    pre_group.add_argument("--pre-no-adg", action="store_false", dest="do_pre_adg")
     pre_group.add_argument("--pre-adg-sl-max-size", type=int, default=50000000)
     pre_group.add_argument("--pre-adg-sl-allow-intermediate-same", action="store_true", dest="pre_adg_sl_allow_intermediate_same")
     pre_group.add_argument("--pre-adg-sl-allow-intermediate-tra", action="store_true", dest="pre_adg_sl_allow_intermediate_tra")
