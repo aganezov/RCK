@@ -104,7 +104,7 @@ def main():
     pre_group.add_argument("--pre-adg-sl-max-size", type=int, default=50000000)
     pre_group.add_argument("--pre-adg-sl-allow-intermediate-same", action="store_true", dest="pre_adg_sl_allow_intermediate_same")
     pre_group.add_argument("--pre-adg-sl-allow-intermediate-tra", action="store_true", dest="pre_adg_sl_allow_intermediate_tra")
-    pre_group.add_argument("--pre-adg-sl-no-inv-signatures", action="store_false", dets="pre_adg_sl_allow_inv_signature")
+    pre_group.add_argument("--pre-adg-sl-no-inv-signatures", action="store_false", dest="pre_adg_sl_allow_inv_signature")
     pre_group.add_argument("--pre-adg-sl-no-refine", action="store_false", dest="pre_adg_sl_refine")
     pre_group.add_argument("--pre-adg-sl-fp", type=float, default=1)
     pre_group.add_argument("--pre-adg-sl-gid-suffix", dest="pre_adg_sl_gid_suffix", default="rck-run-sL")
