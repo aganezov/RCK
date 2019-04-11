@@ -2,8 +2,8 @@ from collections import defaultdict
 from copy import deepcopy
 
 from rck.core.io import COPY_NUMBER, stringify_adjacency_cn_entry
-from rck.core.structures import Strand, Position, sorted_segments_donot_overlap, Haplotype, SegmentCopyNumberProfile
-from utils.adj.process import REMOVE
+from rck.core.structures import Strand, Position, sorted_segments_donot_overlap, Haplotype, SegmentCopyNumberProfile, Segment, refined_scnt_with_adjacencies_and_telomeres
+from rck.utils.adj.process import REMOVE
 
 
 def refined_segments(segments, additional_positions=None, additional_positions_by_chrs=None):
@@ -211,3 +211,81 @@ def filter_segments_by_size(segments, min_size=0, max_size=1000000000):
         size = abs(segment.end_coordinate - segment.start_coordinate)
         if min_size <= size <= max_size:
             yield segment
+
+
+def segment_within_segment(inner_segment, outer_segment):
+    start_in = outer_segment.start_coordinate <= inner_segment.start_coordinate <= outer_segment.end_coordinate
+    end_in = outer_segment.start_coordinate <= inner_segment.end_coordinate <= outer_segment.end_coordinate
+    return start_in and end_in
+
+
+
+def get_circa_segments_cna_fractions(segments, scnt, clone_id, window_size=10000000, chr_sizes=None, cna_type="ampl", haploid=False, inverse=False):
+    intra_result = defaultdict(list)
+    segments_by_chrs = defaultdict(list)
+    for segment in segments:
+        segments_by_chrs[segment.chromosome].append(segment)
+    for chr_name in sorted(segments_by_chrs.keys()):
+        segments_by_chrs[chr_name] = sorted(segments_by_chrs[chr_name], key=lambda s: (s.start_coordinate, s.end_coordinate))
+    windows_by_chr = defaultdict(list)
+    if chr_sizes is None:
+        chr_sizes = {}
+    for chr_name in set(chr_sizes.keys()) | set(segments_by_chrs.keys()):
+        start = 0
+        default = segments_by_chrs[chr_name][-1].end_coordinate if chr_name in segments_by_chrs else 0
+        end = chr_sizes.get(chr_name, default)
+        windows_boundaries = list(range(start, end, window_size))
+        if windows_boundaries[-1] != end:
+            windows_boundaries.append(end)
+        for lb, rb in zip(windows_boundaries[:-1], windows_boundaries[1:]):
+            segment = Segment.from_chromosome_coordinates(chromosome=chr_name, start=lb + 1, end=rb)
+            windows_by_chr[chr_name].append(segment)
+    windows = []
+    for ws in windows_by_chr.values():
+        chr_name = ws[0].chromosome
+        if chr_name in segments_by_chrs and segments_by_chrs[chr_name][0].start_coordinate > ws[0].start_coordinate:
+            segments_by_chrs[chr_name][0].start_position.coordinate = ws[0].start_coordinate
+        if chr_name in segments_by_chrs and segments_by_chrs[chr_name][-1].end_coordinate < ws[-1].end_coordinate:
+            segments_by_chrs[chr_name][-1].end_position.coordinate = ws[-1].end_coordinate
+        for w in ws:
+            windows.append(w)
+    positions = []
+    for w in windows:
+        if w.chromosome in segments_by_chrs:
+            positions.append(w.start_position)
+            positions.append(w.end_position)
+    r_segments, r_scnt, _ = refined_scnt_with_adjacencies_and_telomeres(segments=segments, scnt=scnt, telomere_positions=positions)
+    for chr_name in windows_by_chr.keys():
+        chr_windows = iter(windows_by_chr[chr_name])
+        current_window = next(chr_windows, None)
+        for segment in r_segments:
+            if current_window is None:
+                break
+            if segment.start_coordinate < current_window.start_coordinate:
+                continue
+            elif segment_within_segment(inner_segment=segment, outer_segment=current_window):
+                intra_result[current_window].append(segment)
+            else:
+                current_window = next(chr_windows, None)
+    scnp: SegmentCopyNumberProfile = r_scnt[clone_id]
+    result = {}
+    for window, segments in intra_result.items():
+        cna_fraction = 0
+        for segment in segments:
+            length_fraction = segment.length / window.length
+            if haploid:
+                cns = [scnp.get_combined_cn(sid=segment.stable_id_non_hap)]
+                base = 2
+            else:
+                cns = [scnp.get_cn(sid=segment.stable_id_non_hap, haplotype=Haplotype.A), scnp.get_cn(sid=segment.stable_id_non_hap, haplotype=Haplotype.B)]
+                base = 1
+            amplified = any(map(lambda cn: cn > base, cns))
+            deletions = any(map(lambda cn: cn < base, cns))
+            if cna_type == "ampl" and amplified:
+                cna_fraction += length_fraction
+            elif cna_type == "del" and deletions:
+                cna_fraction += length_fraction
+        if inverse:
+            cna_fraction = 1 - cna_fraction
+        result[window] = cna_fraction
+    return result
