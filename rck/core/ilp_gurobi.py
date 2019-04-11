@@ -1,11 +1,10 @@
 import gurobi as g
-import networkx as nx
 
 from rck.core.graph import IntervalAdjacencyGraph
 from rck.core.io import FALSE_POSITIVE, EXTERNAL_NA_ID, AG_LABELING
 from rck.core.structures import Phasing, AdjacencyType, Haplotype, get_aabb_for_ra, get_abba_for_na_and_position
 from rck.core.structures import SegmentCopyNumberProfile, AdjacencyCopyNumberProfile, check_and_fill_segments_to_fragments, AdjacencyGroupType, CNBoundaries
-from utils.scn.process import get_haploid_scnt
+from rck.utils.scn.process import get_haploid_scnt
 
 FRAGMENT_ALLELE = "fragment_flipping"
 SEGMENT_COPY_NUMBER = "segment_copy_number"
