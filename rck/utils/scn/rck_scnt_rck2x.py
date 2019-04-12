@@ -65,14 +65,19 @@ def main():
             chr_sizes = read_chr_sizes_from_source(source=args.chr_sizes)
         circa_segments_cna_fractions = get_circa_segments_cna_fractions(segments=segments, scnt=scnt, clone_id=args.clone_id,
                                                                         window_size=args.window_size, chr_sizes=chr_sizes, cna_type=args.cna_type,
-                                                                        haploid=args.haploid, inverse=args.inverse)
+                                                                        haploid=args.haploid)
         segments = []
         total_average = 0
+        total_length = 0
         for segment, cna_fraction in circa_segments_cna_fractions.items():
-            segment.extra[args.cna_type + "_fraction"] = cna_fraction
-            total_average += cna_fraction
+            value = cna_fraction * segment.length / args.window_size
+            if args.inverse:
+                value = 1 - value
+            segment.extra[args.cna_type + "_fraction"] = value
+            total_length += segment.length
+            total_average += cna_fraction * segment.length
             segments.append(segment)
-        print("total average cna fraction", total_average / len(segments))
+        print("total average cna fraction", total_average / total_length)
         write_segments_to_circa_destination(destination=args.output, segments=segments, extra=[args.cna_type + "_fraction"])
     logger.info("Success!")
 

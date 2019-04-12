@@ -219,8 +219,7 @@ def segment_within_segment(inner_segment, outer_segment):
     return start_in and end_in
 
 
-
-def get_circa_segments_cna_fractions(segments, scnt, clone_id, window_size=10000000, chr_sizes=None, cna_type="ampl", haploid=False, inverse=False):
+def get_circa_segments_cna_fractions(segments, scnt, clone_id, window_size=10000000, chr_sizes=None, cna_type="ampl", haploid=False):
     intra_result = defaultdict(list)
     segments_by_chrs = defaultdict(list)
     for segment in segments:
@@ -231,9 +230,9 @@ def get_circa_segments_cna_fractions(segments, scnt, clone_id, window_size=10000
     if chr_sizes is None:
         chr_sizes = {}
     for chr_name in set(chr_sizes.keys()) | set(segments_by_chrs.keys()):
-        start = 0
-        default = segments_by_chrs[chr_name][-1].end_coordinate if chr_name in segments_by_chrs else 0
-        end = chr_sizes.get(chr_name, default)
+        start = segments_by_chrs[chr_name][0].start_coordinate - 1 if chr_name in segments_by_chrs else 0
+        e_default = segments_by_chrs[chr_name][-1].end_coordinate if chr_name in segments_by_chrs else 0
+        end = chr_sizes.get(chr_name, e_default)
         windows_boundaries = list(range(start, end, window_size))
         if windows_boundaries[-1] != end:
             windows_boundaries.append(end)
@@ -255,10 +254,14 @@ def get_circa_segments_cna_fractions(segments, scnt, clone_id, window_size=10000
             positions.append(w.start_position)
             positions.append(w.end_position)
     r_segments, r_scnt, _ = refined_scnt_with_adjacencies_and_telomeres(segments=segments, scnt=scnt, telomere_positions=positions)
+    r_segments_by_chr = defaultdict(list)
+    for s in r_segments:
+        r_segments_by_chr[s.chromosome].append(s)
     for chr_name in windows_by_chr.keys():
         chr_windows = iter(windows_by_chr[chr_name])
+        chr_segments = sorted(r_segments_by_chr[chr_name], key=lambda s: (s.start_coordinate, s.end_coordinate))
         current_window = next(chr_windows, None)
-        for segment in r_segments:
+        for segment in chr_segments:
             if current_window is None:
                 break
             if segment.start_coordinate < current_window.start_coordinate:
@@ -274,18 +277,18 @@ def get_circa_segments_cna_fractions(segments, scnt, clone_id, window_size=10000
         for segment in segments:
             length_fraction = segment.length / window.length
             if haploid:
-                cns = [scnp.get_combined_cn(sid=segment.stable_id_non_hap)]
+                cns = [scnp.get_combined_cn(sid=segment.stable_id_non_hap, default=-1)]
                 base = 2
             else:
-                cns = [scnp.get_cn(sid=segment.stable_id_non_hap, haplotype=Haplotype.A), scnp.get_cn(sid=segment.stable_id_non_hap, haplotype=Haplotype.B)]
+                cns = [scnp.get_cn(sid=segment.stable_id_non_hap, haplotype=Haplotype.A, default=-1), scnp.get_cn(sid=segment.stable_id_non_hap, haplotype=Haplotype.B, default=-1)]
                 base = 1
+            if any(map(lambda e: e < 0, cns)):
+                print("something wrong with segment {s} in window {w}".format(s=str(segment), w=str(window)))
             amplified = any(map(lambda cn: cn > base, cns))
             deletions = any(map(lambda cn: cn < base, cns))
             if cna_type == "ampl" and amplified:
                 cna_fraction += length_fraction
             elif cna_type == "del" and deletions:
                 cna_fraction += length_fraction
-        if inverse:
-            cna_fraction = 1 - cna_fraction
         result[window] = cna_fraction
     return result
