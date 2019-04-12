@@ -87,7 +87,7 @@ def main():
                                            adj_full_cnt=args.circa_element_adj_cnt_full)
         segments = []
         for segment, cnt in circa_adj_cnts.items():
-            segment.extra[args.element + "_cnt"] = cnt
+            segment.extra[args.element + "_cnt"] = cnt * segment.length / args.window_size
             segments.append(segment)
         write_segments_to_circa_destination(destination=args.output, segments=segments, extra=[args.element + "_cnt"])
     logger.info("Success")
