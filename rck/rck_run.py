@@ -830,11 +830,10 @@ def main():
     if args.post_check_all or args.post_check_adj_groups or args.post_check_adj_groups_l:
         logger.info("Performing post-inference check on adjacency groups (labeling type)")
         labeling_groups = [ag for ag in adjacency_groups if ag.group_type == AdjacencyGroupType.LABELING]
-        labeling_groups_fine_cnt = 0
         logger.info("There were {cnt} labeling adjacency groups in the input.".format(cnt=len(labeling_groups)))
         labeling_groups_violations = adjacency_groups_labeling_violations(groups=labeling_groups, acnt=acnt)
         if len(labeling_groups_violations) == 0:
-            logger.info("Everything is OK for all {good}/{all} labeling adjacency groups.".format(good=labeling_groups_fine_cnt, all=len(labeling_groups)))
+            logger.info("Everything is OK for all {good}/{all} labeling adjacency groups.".format(good=len(labeling_groups) - len(labeling_groups_violations), all=len(labeling_groups)))
         else:
             logger.error(", ".join(str(ag.gid) for ag in labeling_groups_violations))
             logger.error("Something went WRONG! In some labeling adjacency groups (see above) inferred FP was greater then the maximum input FP.")
