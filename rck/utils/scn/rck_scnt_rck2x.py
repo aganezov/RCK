@@ -77,7 +77,7 @@ def main():
             total_length += segment.length
             total_average += cna_fraction * segment.length
             segments.append(segment)
-        print("total average cna fraction", total_average / total_length)
+        logger.info("Total average cna fraction is " + str(total_average / total_length))
         write_segments_to_circa_destination(destination=args.output, segments=segments, extra=[args.cna_type + "_fraction"])
     logger.info("Success!")
 
