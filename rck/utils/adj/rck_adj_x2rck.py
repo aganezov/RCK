@@ -63,6 +63,7 @@ def main():
     ####
     pbsv = subparsers.add_parser("pbsv", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert PBSV VCF SV calls into RCK NAS format")
     pbsv.add_argument("--id-suffix", dest="id_suffix", default="pbsv")
+    pbsv.add_argument("--sample", default=None)
     pbsv.add_argument("pbsv_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
     remixt = subparsers.add_parser("remixt", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert ReMixT Novel adjacencies calls into RCK format")
@@ -169,7 +170,7 @@ def main():
         logger.info("Reading PBSV VCF records from {file}".format(file=args.pbsv_vcf_file))
         pbsv_vcf_records = get_vcf_records_from_source(source=args.pbsv_vcf_file)
         logger.info("Converting PBSV VCF records to RCK adjacencies")
-        nas = get_nas_from_pbsv_vcf_records(pbsv_vcf_records=pbsv_vcf_records, setup=setup)
+        nas = get_nas_from_pbsv_vcf_records(pbsv_vcf_records=pbsv_vcf_records, setup=setup, sample=args.sample)
     elif args.command == "gundem2015":
         logger.info("Starting converting adjacencies from Gundem et al 2015 (BRASS2???) to that of RCK")
         logger.info("Reading Gundem 2015 et al (BRASS???) records from {file}".format(file=args.gundem2015_file))

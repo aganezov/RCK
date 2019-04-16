@@ -101,7 +101,7 @@ def get_mode_str(format="bam", input=False):
     return result
 
 
-def get_labeling_groups(read_alignments, read_adjacencies, strategy="skip", delta=500):
+def get_labeling_groups(read_alignments, read_adjacencies, strategy="skip", delta=500, neighbour_selection="first"):
     result = []
     read_alignments = sorted(read_alignments, key=lambda e: (e.query_alignment_start, e.query_alignment_end))
     processed_positions = set()
@@ -145,6 +145,8 @@ def get_labeling_groups(read_alignments, read_adjacencies, strategy="skip", delt
                 for candidate in ordered_neighbours:
                     if candidate.strand != p.strand:
                         neighbour = candidate
+                        if neighbour_selection == "first":
+                            break
                 if neighbour is None:
                     continue
                 # neighbour = direction_neighbours[-1] if p.strand == Strand.FORWARD else direction_neighbours[0]
