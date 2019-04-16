@@ -4,8 +4,6 @@ import os
 import sys
 from collections import defaultdict
 
-from utils.adj.process import iter_haploid_adjacencies
-
 current_file_level = 3
 current_dir = os.path.dirname(os.path.realpath(__file__))
 for _ in range(current_file_level):
@@ -19,7 +17,7 @@ from rck.utils.adj.process import get_shared_nas_parser, Merger, iter_over_strin
     filter_adjacencies_by_extra, \
     KEEP, REMOVE, refined_adjacencies_reciprocal
 from rck.utils.adj.convert import get_chrs_regions_string_lists_from_source, get_chrs_regions_string_list_from_file, parse_segment_chr_region
-from rck.utils.adj.process import filter_adjacencies_by_chromosomal_regions, filter_adjacencies_by_size
+from rck.utils.adj.process import filter_adjacencies_by_chromosomal_regions, filter_adjacencies_by_size, iter_haploid_adjacencies
 
 
 def main():
