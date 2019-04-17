@@ -49,7 +49,7 @@ def main():
     sniffles_parser.add_argument("--id-suffix", dest="id_suffix", default="sniffles")
     sniffles_parser.add_argument("sniffles_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
-    grocsv = subparsers.add_parser("grocsv", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert GROCSVS VCF SV calls into RCK NAS format")
+    grocsv = subparsers.add_parser("grocsvs", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert GROCSVS VCF SV calls into RCK NAS format")
     grocsv.add_argument("--id-suffix", dest="id_suffix", default="grocsv")
     grocsv.add_argument("grocsv_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
     grocsv.add_argument("--samples")
@@ -144,7 +144,7 @@ def main():
         sniffles_vcf_records = get_vcf_records_from_source(source=args.sniffles_vcf_file)
         logger.info("Converting Sniffles VCF records to RCK adjacencies")
         nas = get_nas_from_sniffles_vcf_records(sniffles_vcf_records=sniffles_vcf_records, setup=setup)
-    elif args.command == "grocsv":
+    elif args.command == "grocsvs":
         logger.info("Starting converting adjacencies from GROCSVS records to that of RCK")
         logger.info("Reading GROCSVS VCF records from {file}".format(file=args.grocsv_vcf_file))
         samples = args.samples.split(",") if args.samples is not None else args.samples
