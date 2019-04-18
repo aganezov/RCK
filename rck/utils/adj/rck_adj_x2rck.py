@@ -92,6 +92,7 @@ def main():
     survivor_parser.add_argument("--samples-separator", default="\t")
     survivor_parser.add_argument("--samples-extra-separator", default=";")
     survivor_parser.add_argument("--samples-suffix-extra", action="store_true", dest="suffix_sample_extra")
+    survivor_parser.add_argument("--survivor-prefix", default="")
     ####
     svaba_parser = subparsers.add_parser("svaba", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert SvABA SV calls into RCK format")
     svaba_parser.add_argument("--id-suffix", dest="id_suffix", default="svaba")
@@ -205,7 +206,7 @@ def main():
                 logger.warning("Unable to reader source adjacency information from {source}".format(source=sample_source))
         logger.info("Converting SURVIVOR VCF records from {file}".format(file=args.survivor_vcf_file))
         nas = get_nas_from_survivor_vcf_records(survivor_vcf_records=survivor_vcf_records, setup=setup, adjacencies_by_ids_by_sample_name=adjacencies_by_ids_by_sample_name,
-                                                suffix_sample_extra=args.suffix_sample_extra)
+                                                suffix_sample_extra=args.suffix_sample_extra, survivor_prefix=args.survivor_prefix)
     elif args.command == "svaba":
         logger.info("Starting converting adjacencies from SvABA to RCK")
         logger.info("Reading SvABA VCF records from {file}".format(file=args.svaba_vcf_file))

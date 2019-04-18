@@ -471,7 +471,7 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
     return nas_by_ids.values()
 
 
-def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacencies_by_ids_by_sample_name=None, suffix_sample_extra=False):
+def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacencies_by_ids_by_sample_name=None, suffix_sample_extra=False, survivor_prefix=""):
     if setup is None:
         setup = {}
     if adjacencies_by_ids_by_sample_name is None:
@@ -510,6 +510,7 @@ def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacenc
         pos2 = Position(chromosome=chr2, coordinate=coord2, strand=strand2)
         supporting_source_ids = set()
         source_vector = []
+        extra = {survivor_prefix + key: value for key, value in extra.items()}
         for vcf_sample in record.samples:
             source_vector.append(vcf_sample.sample)
             source_id = vcf_sample.data.ID.split(",")[0]
