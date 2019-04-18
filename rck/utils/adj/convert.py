@@ -526,7 +526,7 @@ def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacenc
                         extra[key] = value
         extra["supporting_source_ids"] = sorted(supporting_source_ids)
         extra["sources"] = source_vector
-        extra["supporting_sources"] = [source for source, flag in zip(source_vector, extra.get("SUPP_VEC", [0 for 0 in source_vector])) if int(flag) != 0]
+        extra["supporting_sources"] = [source for source, flag in zip(source_vector, extra.get("SUPP_VEC", [0 for _ in source_vector])) if int(flag) != 0]
         na = Adjacency(position1=pos1, position2=pos2, extra=extra)
         nas_by_ids[record_id].append(na)
     nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
