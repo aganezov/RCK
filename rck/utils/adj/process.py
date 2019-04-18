@@ -253,7 +253,7 @@ def filter_adjacencies_by_size(adjacencies, min_size=0, max_size=1000000000, siz
     for adj in adjacencies:
         adj_size = None
         try:
-            adj_size = int(adj.extra[size_extra_field])
+            adj_size = int(float(adj.extra[size_extra_field]))
             if size_extra_field_abs:
                 adj_size = abs(adj_size)
         except (KeyError, ValueError):
