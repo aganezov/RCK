@@ -9,6 +9,8 @@ import math
 from collections import Counter
 import pandas as pd
 
+
+
 current_file_level = 3
 current_dir = os.path.dirname(os.path.realpath(__file__))
 for _ in range(current_file_level):
@@ -16,9 +18,10 @@ for _ in range(current_file_level):
 sys.path.append(current_dir)
 
 import rck
-from rck.core.io import write_adjacencies_to_destination, read_adjacencies_from_source
+from rck.core.io import write_adjacencies_to_destination, read_adjacencies_from_source, get_logging_cli_parser
 from rck.utils.adj.convert import *
 from rck.utils.adj.process import filter_adjacencies_by_chromosomal_regions, get_shared_nas_parser, ORIGIN_IDS
+from rck.utils.adj.stats import merged_source_tally
 
 
 def get_str_size_label(int_size):
@@ -46,6 +49,7 @@ def get_length(na, treat_ins_separately=True):
 
 
 def main():
+    cli_logging_parser = get_logging_cli_parser()
     parser = argparse.ArgumentParser(prog="RCK-UTILS-ADJ-STATS")
     parser.add_argument('--version', action='version', version=rck.version)
     ######
@@ -96,12 +100,24 @@ def main():
     support_parser.add_argument("--no-bar-values", action="store_false", dest="bar_values")
     support_parser.add_argument("--support-output-subdir", default="support")
     #######
+    survivor_stat_parser = subparsers.add_parser("survivor_stat", parents=[cli_logging_parser])
+    survivor_stat_parser.add_argument("rck_adj", type=argparse.FileType("rt"), default=sys.stdin)
+    survivor_stat_parser.add_argument("--separator", default="\t")
+    survivor_stat_parser.add_argument("--extra-separator", default=";")
+    survivor_stat_parser.add_argument("--sources-field", default="supporting_sources")
+    survivor_stat_parser.add_argument("-o", "--output", type=argparse.FileType("wt"), default=sys.stdout)
+    #######
     args = parser.parse_args()
-    if args.vis:
-        import seaborn as sns
-        import matplotlib.pyplot as plt
-        sns.set(color_codes=True)
-    if args.command == "cnt":
+    # if args.vis:
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+    sns.set(color_codes=True)
+    if args.command == "survivor_stat":
+        adjacencies = read_adjacencies_from_source(source=args.rck_adj, separator=args.separator, extra_separator=args.extra_separator)
+        counter = merged_source_tally(adjacencies=adjacencies, extra_sources_field=args.sources_field)
+        for key, value in counter.items():
+            print("{key} : {value}".format(key=key, value=value), file=args.output)
+    elif args.command == "cnt":
         nas = read_adjacencies_from_source(source=args.rck_nas)
         use_annotations = args.ann
         bins = set()

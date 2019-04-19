@@ -28,6 +28,7 @@ setup(
             "rck-adj-x2rck = rck.utils.adj.rck_adj_x2rck:main",
             "rck-adj-rck2x = rck.utils.adj.rck_adj_rck2x:main",
             "rck-adj-process = rck.utils.adj.rck_adj_process:main",
+            "rck-adj-stats = rck.utils.adj.rck_adj_stats:main",
             "rck-adg-infer = rck.utils.adj.rck_adg_infer:main",
             "rck-adg-process = rck.utils.adj.rck_adg_process:main",
             "rck-input-refine = rck.utils.rck_input_refine:main",
