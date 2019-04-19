@@ -109,7 +109,7 @@ def main():
     #######
     args = parser.parse_args()
     # if args.vis
-    if args.command == "survivor_stat":
+    if args.command == "survivor-stat":
         adjacencies = read_adjacencies_from_source(source=args.rck_adj, separator=args.separator, extra_separator=args.extra_separator)
         counter = merged_source_tally(adjacencies=adjacencies, extra_sources_field=args.sources_field)
         for key, value in counter.items():
