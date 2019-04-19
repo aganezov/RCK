@@ -108,16 +108,16 @@ def main():
     survivor_stat_parser.add_argument("-o", "--output", type=argparse.FileType("wt"), default=sys.stdout)
     #######
     args = parser.parse_args()
-    # if args.vis:
-    import seaborn as sns
-    import matplotlib.pyplot as plt
-    sns.set(color_codes=True)
+    # if args.vis
     if args.command == "survivor_stat":
         adjacencies = read_adjacencies_from_source(source=args.rck_adj, separator=args.separator, extra_separator=args.extra_separator)
         counter = merged_source_tally(adjacencies=adjacencies, extra_sources_field=args.sources_field)
         for key, value in counter.items():
             print("{key} : {value}".format(key=key, value=value), file=args.output)
     elif args.command == "cnt":
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+        sns.set(color_codes=True)
         nas = read_adjacencies_from_source(source=args.rck_nas)
         use_annotations = args.ann
         bins = set()
@@ -245,6 +245,9 @@ def main():
             plt.show()
         plt.gcf()
     elif args.command == "lr":
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+        sns.set(color_codes=True)
         nas = read_adjacencies_from_source(source=args.rck_nas)
         reads_to_nas = defaultdict(list)
         for na in nas:
@@ -280,6 +283,9 @@ def main():
             plt.show()
         plt.gcf()
     elif args.command == "merged":
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+        sns.set(color_codes=True)
         nas = read_adjacencies_from_source(source=args.rck_nas)
         source_pattern = re.compile(args.origin_regex)
         source_groups_cnt = defaultdict(int)
@@ -358,6 +364,9 @@ def main():
         if args.vis_interactive:
             plt.show()
     elif args.command == "support":
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+        sns.set(color_codes=True)
         max_support = 30
         import statistics
         nas = read_adjacencies_from_source(source=args.rck_nas)
