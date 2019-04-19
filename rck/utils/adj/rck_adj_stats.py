@@ -100,7 +100,7 @@ def main():
     support_parser.add_argument("--no-bar-values", action="store_false", dest="bar_values")
     support_parser.add_argument("--support-output-subdir", default="support")
     #######
-    survivor_stat_parser = subparsers.add_parser("survivor_stat", parents=[cli_logging_parser])
+    survivor_stat_parser = subparsers.add_parser("survivor-stat", parents=[cli_logging_parser])
     survivor_stat_parser.add_argument("rck_adj", type=argparse.FileType("rt"), default=sys.stdin)
     survivor_stat_parser.add_argument("--separator", default="\t")
     survivor_stat_parser.add_argument("--extra-separator", default=";")
