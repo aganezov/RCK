@@ -510,7 +510,6 @@ def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacenc
         pos2 = Position(chromosome=chr2, coordinate=coord2, strand=strand2)
         supporting_source_ids = set()
         source_vector = []
-        extra = {survivor_prefix + key: value for key, value in extra.items()}
         for vcf_sample in record.samples:
             source_vector.append(vcf_sample.sample)
             source_id = vcf_sample.data.ID.split(",")[0]
@@ -525,9 +524,10 @@ def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacenc
                         key = str(vcf_sample.sample) + "_" + str(key)
                     if key not in extra:
                         extra[key] = value
-        extra["supporting_source_ids"] = sorted(supporting_source_ids)
-        extra["sources"] = source_vector
-        extra["supporting_sources"] = [source for source, flag in zip(source_vector, extra.get("supp_vec", [0 for _ in source_vector])) if int(flag) != 0]
+        survivor_prefix = survivor_prefix + "_" if len(survivor_prefix) > 0 else ""
+        extra[survivor_prefix + "supporting_source_ids"] = sorted(supporting_source_ids)
+        extra[survivor_prefix + "sources"] = source_vector
+        extra[survivor_prefix + "supporting_sources"] = [source for source, flag in zip(source_vector, extra.get("supp_vec", [0 for _ in source_vector])) if int(flag) != 0]
         na = Adjacency(position1=pos1, position2=pos2, extra=extra)
         nas_by_ids[record_id].append(na)
     nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
