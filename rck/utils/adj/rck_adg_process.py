@@ -38,7 +38,7 @@ def main():
     cat_parser.add_argument("--o-extra-separator", default=";")
     ###
     refine_parser = subparsers.add_parser("refine", parents=[cli_logging_parser])
-    refine_parser.add_argument("rck_adg", type=argparse.FileType("rt"), default=sys.stdin)
+    refine_parser.add_argument("rck_adg", nargs="?", type=argparse.FileType("rt"), default=sys.stdin)
     refine_parser.add_argument("--i-separator", default="\t")
     refine_parser.add_argument("--i-extra-separator", default=";")
     refine_parser.add_argument("--i-aids-separator", default=",")
