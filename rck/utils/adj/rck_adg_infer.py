@@ -40,9 +40,10 @@ def main():
     short_nas_labeling_group_parser.add_argument("rck_adj", type=argparse.FileType("rt"), default=sys.stdin)
     short_nas_labeling_group_parser.add_argument("--i-separator", default="\t")
     short_nas_labeling_group_parser.add_argument("--i-extra-separator", default=";")
-    short_nas_labeling_group_parser.add_argument("--max-size", type=int, default=1000)
+    short_nas_labeling_group_parser.add_argument("--max-size", type=int, default=50000000)
     short_nas_labeling_group_parser.add_argument("--allow-intermediate-same", action="store_true", dest="allow_intermediate_same")
     short_nas_labeling_group_parser.add_argument("--allow-intermediate-tra", action="store_true", dest="allow_intermediate_tra")
+    short_nas_labeling_group_parser.add_argument("--no-inv-signatures", action="store_false", dest="allow_inv_signature")
     short_nas_labeling_group_parser.add_argument("--no-refine", action="store_false", dest="refine")
     short_nas_labeling_group_parser.add_argument("--fp", type=float, default=1)
     short_nas_labeling_group_parser.add_argument("--gid-suffix", dest="gid_suffix", default="short-nas-L")
@@ -96,7 +97,7 @@ def main():
         logger.info("Inferring labeling adjacency groups from read adjacencies")
         adj_groups = infer_short_nas_labeling_groups(adjacencies=adjacencies, gid_suffix=args.gid_suffix, max_size=args.max_size,
                                                      allow_intermediate_same=args.allow_intermediate_same,
-                                                     allow_intermediate_tra=args.allow_intermediate_tra)
+                                                     allow_intermediate_tra=args.allow_intermediate_tra, allow_inv_signatures=args.allow_inv_signature)
         logger.info("Inferred {cnt} labeling adjacency groups".format(cnt=len(adj_groups)))
         if args.refine:
             logger.info("Refining inferred labeling adjacency groups")
