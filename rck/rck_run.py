@@ -359,9 +359,10 @@ def main():
     segments_to_fragments = None
     try:
         segments_to_fragments = get_segments_for_fragments_ids_dict(segments=segments, fragments=fragments, allow_non_covered=False)
-    except Exception:
+    except Exception as e:
         logger.error("FRAGMENTS boundaries do not align with SEGMENTS boundaries; "
                      "having this problem at this point indicates that the preprocessing was turned off and the data in original input SCNT and --fragments is not aligned")
+        logger.error(e)
         exit(1)
     segments_positions = []
     for s in segments:

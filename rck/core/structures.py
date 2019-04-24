@@ -1977,15 +1977,15 @@ def get_segments_for_fragments_ids_dict(segments, fragments, allow_non_covered=T
         fragments_by_chr[f.chromosome].append(f)
     for chr_name in sorted(segments_by_chr.keys()):
         if chr_name not in fragments_by_chr and not allow_non_covered:
-            raise Exception()
+            raise Exception("Segments chromosome {chrom} is not in fragments".format(chrom=chr_name))
         chr_segments = sorted(segments_by_chr[chr_name], key=lambda s: (s.start_position.coordinate, s.end_position.coordinate))
         if not sorted_segments_donot_overlap(segments=chr_segments):
-            raise Exception()
+            raise Exception("Sorted segments overlap on chromosome {chrom}".format(chrom=chr_name))
         chr_fragments = sorted(fragments_by_chr[chr_name], key=lambda f: (f.start_position.coordinate, f.end_position.coordinate))
         if not sorted_segments_donot_overlap(segments=chr_fragments):
-            raise Exception()
+            raise Exception("Sorted fragment overlap on chromosome {chrom}".format(chrom=chr_name))
         if boundaries_overlap(fragments=chr_fragments, segments=chr_segments):
-            raise Exception()
+            raise Exception("Segments and fragments are overlapping, and are not aligned")
         fragments_it = iter(chr_fragments)
         segments_it = iter(chr_segments)
         current_fragment = next(fragments_it, None)
