@@ -483,8 +483,13 @@ def main():
         logger.info("Performing per chromosomal pre-sovling")
         presolve_dir = os.path.join(workdir_path, "_presolve")
         os.makedirs(presolve_dir, exist_ok=True)
-        logger.info("Results and longs will be stored in {file} directory".format(file=presolve_dir))
+        logger.info("Results and logs will be stored in {file} directory".format(file=presolve_dir))
         segments_by_chrs = defaultdict(list)
+        logger.debug("Computing translocations fraction out of the input adjacencies")
+        translocations = [adj for adj in adjacencies if adj.position1.chromosome != adj.position2.chromosome]
+        translocations_fraction = len(translocations) / len(input_adjacencies)
+        logger.debug("Translocation fraction is {:0.2f}".format(translocations_fraction))
+        presolve_overall_fp = min(1.0, overall_nas_fp + translocations_fraction)
         for segment in segments:
             segments_by_chrs[segment.chromosome].append(segment)
         for chr_name in segments_by_chrs.keys():
@@ -514,7 +519,7 @@ def main():
                                            hapl_adjacencies_groups=chr_groups,
                                            scnb=scnb,
                                            solve_as_haploid=args.run_haploid,
-                                           hapl_nov_adjacencies_fp=overall_nas_fp,
+                                           hapl_nov_adjacencies_fp=presolve_overall_fp,
                                            extra=extra)
             logger.debug("Building variables and constraints")
             ilp_model.build_gurobi_model()
