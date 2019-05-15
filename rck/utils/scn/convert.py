@@ -91,7 +91,7 @@ def get_scnt_from_hatchet_file(file_name, sample_name, separator="\t", clone_ids
         return get_scnt_from_hatchet_source(source=source, separator=separator, clone_ids=clone_ids, chr_strip=chr_strip)
 
 
-def get_scnt_from_hatchet_source(source, clone_ids, separator="\t", chr_strip=True):
+def get_scnt_from_hatchet_source(source, sample_name, clone_ids, separator="\t", chr_strip=True):
     scnt = {clone_id: SegmentCopyNumberProfile() for clone_id in clone_ids}
     segments = []
     clone_id_mappings = {}
@@ -108,8 +108,8 @@ def get_scnt_from_hatchet_source(source, clone_ids, separator="\t", chr_strip=Tr
         clone_cn_strs = clone_data[::2]
         if line.startswith("#") or len(line) == 0:
             continue
-        sample_name = data[3]
-        if sample_name != sample_name:
+        data_sample_name = data[3]
+        if data_sample_name != sample_name:
             continue
         chromosome = data[0]
         if chr_strip:
