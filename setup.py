@@ -31,6 +31,7 @@ setup(
             "rck-adj-stats = rck.utils.adj.rck_adj_stats:main",
             "rck-adg-infer = rck.utils.adj.rck_adg_infer:main",
             "rck-adg-process = rck.utils.adj.rck_adg_process:main",
+            "rck-adg-stats = rck.utils.adj.rck_adg_stats:main",
             "rck-input-refine = rck.utils.rck_input_refine:main",
         ]
     },
@@ -41,5 +42,6 @@ setup(
         "pysam",
         "sortedcontainers",
         "pandas",
+        "gffutils",
     ]
 )

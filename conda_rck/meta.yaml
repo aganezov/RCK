@@ -23,6 +23,7 @@ requirements:
     - pandas
     - gurobi
     - pip
+    - gffutils
     - python >=3.6
   run:
     - networkx >=2
@@ -33,6 +34,7 @@ requirements:
     - pandas
     - gurobi
     - pip
+    - gffutils
     - python >=3.6
 
 test:
