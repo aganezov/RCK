@@ -39,6 +39,6 @@ def merged_source_tally(adjacencies, bins=None, extra_sources_field="supporting_
             if adj_size < bin:
                 target_bin = bin
                 break
-        source = (None,) if sources_string is None else tuple(sorted(sources_string.split(",")))
+        source = ("None",) if sources_string is None else tuple(sorted(sources_string.split(",")))
         result[source][target_bin] += 1
     return result
