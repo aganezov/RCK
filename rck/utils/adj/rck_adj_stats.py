@@ -9,8 +9,6 @@ import math
 from collections import Counter
 import pandas as pd
 
-
-
 current_file_level = 3
 current_dir = os.path.dirname(os.path.realpath(__file__))
 for _ in range(current_file_level):
@@ -21,7 +19,7 @@ import rck
 from rck.core.io import write_adjacencies_to_destination, read_adjacencies_from_source, get_logging_cli_parser
 from rck.utils.adj.convert import *
 from rck.utils.adj.process import filter_adjacencies_by_chromosomal_regions, get_shared_nas_parser, ORIGIN_IDS
-from rck.utils.adj.stats import merged_source_tally
+from rck.utils.adj.stats import merged_source_tally, get_size_bins
 
 
 def get_str_size_label(int_size):
@@ -105,15 +103,29 @@ def main():
     survivor_stat_parser.add_argument("--separator", default="\t")
     survivor_stat_parser.add_argument("--extra-separator", default=";")
     survivor_stat_parser.add_argument("--sources-field", default="supporting_sources")
+    survivor_stat_parser.add_argument("--size-bins", type=str, default="1,100,200,300,400,500,750,1000,2000,5000,10000,50000,100000,500000")
+    survivor_stat_parser.add_argument("--size-extra-field", default="svlen")
+    survivor_stat_parser.add_argument("--size-extra-field-no-abs", action="store_false", dest="size_extra_field_abs")
+    survivor_stat_parser.add_argument("--size-extra-seq-field")
     survivor_stat_parser.add_argument("-o", "--output", type=argparse.FileType("wt"), default=sys.stdout)
     #######
     args = parser.parse_args()
     # if args.vis
     if args.command == "survivor-stat":
         adjacencies = read_adjacencies_from_source(source=args.rck_adj, separator=args.separator, extra_separator=args.extra_separator)
-        counter = merged_source_tally(adjacencies=adjacencies, extra_sources_field=args.sources_field)
-        for key, value in counter.items():
-            print("{key} : {value}".format(key=key, value=value), file=args.output)
+        bins = get_size_bins(bins_strs=args.size_bins.split(","))
+        tally = merged_source_tally(adjacencies=adjacencies, bins=bins, extra_sources_field=args.sources_field,
+                                    size_extra_field=args.size_extra_field, size_extra_field_abs=args.size_extra_field_abs,
+                                    size_extra_seq_field=args.size_extra_seq_field)
+        header_entries = ["bin"] + [";".join(entry) for entry in sorted(tally.keys())]
+        writer = csv.DictWriter(args.output, fieldnames=header_entries, delimiter=",")
+        writer.writeheader()
+        for lb, rb in zip([None] + bins, bins):
+            data = {"bin": "[{lb}-{rb})".format(lb=lb, rb=rb)}
+            for source in sorted(tally.keys()):
+                str_source = ";".join(source)
+                data[str_source] = tally[source].get(rb, 0)
+            writer.writerow(data)
     elif args.command == "cnt":
         import seaborn as sns
         import matplotlib.pyplot as plt

@@ -44,7 +44,7 @@ def main():
     filter_parser.add_argument("--max-size", type=int, default=1000000000)
     filter_parser.add_argument("--no-allow-inter-chr", action="store_false", dest="allow_inter_chr")
     filter_parser.add_argument("--no-allow-intra-chr", action="store_false", dest="allow_intra_chr")
-    filter_parser.add_argument("--size-extra-field")
+    filter_parser.add_argument("--size-extra-field", default="svlen")
     filter_parser.add_argument("--size-extra-field-no-abs", action="store_false", dest="size_extra_field_abs")
     filter_parser.add_argument("--size-extra-seq-field")
     # filter_parser.add_argument("--merged-field", default="origin_ids")
