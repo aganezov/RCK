@@ -8,9 +8,9 @@ for _ in range(current_file_level):
     current_dir = os.path.dirname(current_dir)
 sys.path.append(current_dir)
 
-from rck.core.io import get_logging_cli_parser, get_standard_logger_from_args, write_scnt_to_destination, get_full_path
+from rck.core.io import get_logging_cli_parser, get_standard_logger_from_args, write_scnt_to_destination, get_full_path, write_segments_to_destination
 from rck.utils.scn.convert import get_scnt_from_battenberg_source, get_scnt_from_hatchet_source, hatchet_get_clone_ids_from_file, \
-    get_scnt_from_remixt_source, titan_get_clone_ids_from_file, get_scnt_from_titan_source, get_scnt_from_ginkgo_source
+    get_scnt_from_remixt_source, titan_get_clone_ids_from_file, get_scnt_from_titan_source, get_scnt_from_ginkgo_source, get_segments_from_gff_file
 from rck.utils.adj.process import get_chromosome_strip_parser
 
 
@@ -58,6 +58,11 @@ def main():
     ginkgo_parser.add_argument("--dummy-clone-name", default="1")
     ginkgo_parser.add_argument("-o", "--output", type=argparse.FileType("wt"), default=sys.stdout)
     ####
+    gff_parser = subparsers.add_parser("gff", parents=[cli_logging_parser, chr_strip_parser])
+    gff_parser.add_argument("gff", type=str)
+    gff_parser.add_argument("--chr-mapping-file", type=argparse.FileType("rt"))
+    gff_parser.add_argument("--chr-mapping-missing-strategy", choices=["keep", "skip"], default="keep")
+    gff_parser.add_argument("-o", "--output", type=argparse.FileType("wt"), default=sys.stdout)
     args = parser.parse_args()
     logger = get_standard_logger_from_args(args=args, program_name="RCK-UTILS-SCNT")
 
@@ -113,6 +118,21 @@ def main():
                                                      separator=args.separator, chr_strip=args.strip_chr)
         logger.info("Writing *haploid* segments copy number values in RCK format to {file}".format(file=args.output))
         write_scnt_to_destination(destination=args.output, segments=segments, scnt=scnt, clone_ids=set(args.dummy_clone_name), separator=args.separator)
+    elif args.command == "gff":
+        logger.info("Converting segments data from GFF format to RCK")
+        logger.info("Reading segments from {file}".format(file=args.gff))
+        chr_mappings = None
+        if args.chr_mapping_file is not None:
+            chr_mappings = {}
+            logger.info("Reading chromosome mapping data from {file}".format(file=args.chr_mapping_file))
+            for line in args.chr_mapping_file:
+                line = line.strip()
+                data = line.split("\t")
+                chr_mappings[data[0]] = data[1]
+        segments = get_segments_from_gff_file(file_name=args.gff, chr_strip=args.strip_chr,
+                                              chr_mapping=chr_mappings, chr_mapping_missing_strategy=args.chr_mapping_missing_strategy)
+        logger.info("Writing segments in RCK format to {file}".format(file=args.output))
+        write_segments_to_destination(destination=args.output, segments=segments)
     logger.info("Success!")
 
 

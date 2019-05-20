@@ -1,6 +1,8 @@
 import csv
 import math
 
+import gffutils
+
 from rck.core.structures import SegmentCopyNumberProfile, Segment, Haplotype
 from rck.utils.adj.convert import strip_chr
 
@@ -276,3 +278,28 @@ def get_scnt_from_ginkgo_source(source, sample_name, dummy_clone="1", separator=
         scnp.set_cn_record(sid=sid, hap=Haplotype.A, cn=cn)
     scnt = {dummy_clone: scnp}
     return segments, scnt
+
+
+def get_segments_from_gff_file(file_name, chr_strip=True, chr_mapping=None, chr_mapping_missing_strategy="keep"):
+    result = []
+    for record in gffutils.DataIterator(file_name):
+        chr_name = record.chrom
+        if chr_mapping is not None and chr_name not in chr_mapping and chr_mapping_missing_strategy == "skip":
+            continue
+        if chr_mapping is not None:
+            chr_name = chr_mapping.get(chr_name, chr_name)
+        if chr_strip:
+            chr_name = strip_chr(chr_string=chr_name)
+        extra = dict(record.attributes)
+        new_extra = {}
+        for key, value in extra.items():
+            if isinstance(value, list) and len(value) == 1:
+                value = value[0]
+            new_extra[key] = value
+        segment = Segment.from_chromosome_coordinates(chromosome=chr_name, start=record.start, end=record.end)
+        segment.extra.update(new_extra)
+        result.append(segment)
+    return result
+
+
+
