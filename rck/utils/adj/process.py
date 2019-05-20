@@ -201,7 +201,7 @@ class Merger(object):
         return case1 or case2
 
 
-def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude=None, include_both=True, exclude_both=False):
+def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude=None, include_both=True, exclude_both=False, include_spanning=False, exclude_spanning=False):
     if include is None:
         include = []
     if exclude is None:
@@ -231,6 +231,8 @@ def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude
                 retain &= chr1in and chr2in
             else:
                 retain &= chr1in or chr2in
+        elif include_spanning and chr1 == chr2 and len(include_segments_chr1) != 0:
+            retain |= coordinates_span_any_segment(coordinate1=adj.position1.coordinate, coordinate2=adj.position2.coordinate, segments=include_segments_chr1, partial=False)
         elif len(include_by_chr) > 0:
             retain = False
         if not retain:
@@ -244,6 +246,8 @@ def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude
                 retain &= not (chr1in and chr2in)
             else:
                 retain &= not (chr1in or chr2in)
+        elif exclude_spanning and chr1 == chr2 and len(exclude_segments_chr1) != 0:
+            retain &= not coordinates_span_any_segment(coordinate1=adj.position1.coordinate, coordinate2=adj.position2.coordinate, segments=exclude_segments_chr1, partial=False)
         if retain:
             yield adj
 
@@ -282,6 +286,15 @@ def coordinate_in_any_segment(coordinate, segments):
     return False
 
 
+def coordinates_span_any_segment(coordinate1, coordinate2, segments, partial=True):
+    for segment in segments:
+        if partial and (segment.start_coordinate <= coordinate1 <= segment.end_coordinate or segment.start_coordinate <= coordinate2 <= segment.end_coordinate):
+            return True
+        elif coordinate1 <= segment.start_coordinate and coordinate2 >= segment.end_coordinate:
+            return True
+    return False
+
+
 def get_shared_nas_parser():
     shared_parser = argparse.ArgumentParser(add_help=False)
     shared_parser.add_argument("--no-append-id", action="store_false", dest="append_id_suffix")
@@ -289,9 +302,11 @@ def get_shared_nas_parser():
     shared_parser.add_argument("--chrs-include", action="append", nargs=1)
     shared_parser.add_argument("--chrs-include-file", type=argparse.FileType("rt"))
     shared_parser.add_argument("--chrs-include-no-both", action="store_false", dest="include_both")
+    shared_parser.add_argument("--chrs-include-spanning", action="store_true", dest="include_spanning")
     shared_parser.add_argument("--chrs-exclude", action="append", nargs=1)
     shared_parser.add_argument("--chrs-exclude-file", type=argparse.FileType("rt"))
     shared_parser.add_argument("--chrs-exclude-both", action="store_true", dest="exclude_both")
+    shared_parser.add_argument("--chrs-exclude-spanning", action="store_true", dest="exclude_spanning")
     return shared_parser
 
 

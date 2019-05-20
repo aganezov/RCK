@@ -163,7 +163,8 @@ def main():
         include_regions = [parse_segment_chr_region(string) for string in include_chrs_regions_strings]
         exclude_regions = [parse_segment_chr_region(string) for string in exclude_chrs_regions_strings]
         adjacencies = filter_adjacencies_by_chromosomal_regions(adjacencies=adjacencies, include=include_regions, exclude=exclude_regions,
-                                                                include_both=args.include_both, exclude_both=args.exclude_both)
+                                                                include_both=args.include_both, exclude_both=args.exclude_both,
+                                                                include_spanning=args.include_spanning, exclude_spanning=args.exclude_spanning)
         keep_extra_field_entries = args.keep_extra_field_regex if args.keep_extra_field_regex is not None else []
         if args.keep_extra_field_regex_file is not None:
             keep_extra_field_entries.extend(list(iter_over_string_entries_from_source(source=args.keep_extra_field_regex_file)))
