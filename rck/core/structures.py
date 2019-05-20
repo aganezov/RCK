@@ -1406,9 +1406,11 @@ def partition_fragments_into_segments_by_na_clusters(hapl_fragments, na_clusters
     return segments_by_chr, fragments_to_segments
 
 
-def refined_scnt(segments, scnt, merge_fragments=True, max_merge_gap=1000000000, fill_gaps=True, max_fill_gap=1000000000):
-    if not merge_fragments and not fill_gaps:
+def refined_scnt(segments, scnt, merge_fragments=True, max_merge_gap=1000000000, fill_gaps=True, max_fill_gap=1000000000,
+                 extend_outermost=True, outermost_positions=None, outermost_positions_margin=1000):
+    if not merge_fragments and not fill_gaps and not extend_outermost:
         return deepcopy(segments), deepcopy(scnt)
+    outermost_positions = outermost_positions if outermost_positions is not None else {}
     clone_ids = sorted(scnt.keys())
     new_fragments_by_chr = defaultdict(list)
     fragments_by_chr = defaultdict(list)
@@ -1426,6 +1428,10 @@ def refined_scnt(segments, scnt, merge_fragments=True, max_merge_gap=1000000000,
         if len(chr_fragments) == 0:
             continue
         current_new_fragment = deepcopy(chr_fragments[0])
+        outermost_start_position = outermost_positions.get(chr_name, {"start": current_new_fragment.start_position}).get("start", current_new_fragment.start_position)
+        if extend_outermost and current_new_fragment.start_coordinate > outermost_start_position.coordinate:
+            outermost_start_position.coordinate = max(0, outermost_start_position.coordinate - outermost_positions_margin)
+            current_new_fragment.start_position = outermost_start_position
         current_new_f_id = current_new_fragment.stable_id_non_hap
         current_f_cnas = {clone_id: scnt[clone_id].get_cn(sid=current_new_f_id, haplotype=Haplotype.A, default=0) for clone_id in clone_ids}
         current_f_cnbs = {clone_id: scnt[clone_id].get_cn(sid=current_new_f_id, haplotype=Haplotype.B, default=0) for clone_id in clone_ids}
@@ -1467,6 +1473,10 @@ def refined_scnt(segments, scnt, merge_fragments=True, max_merge_gap=1000000000,
         ####
         # Reaching this place only after everything on the chromosome is processed
         ####
+        outermost_end_position = outermost_positions.get(chr_name, {"end": current_new_fragment.end_position}).get("end", current_new_fragment.end_position)
+        if extend_outermost and current_new_fragment.end_coordinate < outermost_end_position.coordinate:
+            outermost_end_position.coordinate = outermost_end_position.coordinate + outermost_positions_margin
+            current_new_fragment.end_position = outermost_end_position
         current_new_f_id = current_new_fragment.stable_id_non_hap
         for old_id in old_to_new:
             segments_ids_mapping[current_new_f_id].append(old_id)
@@ -1540,7 +1550,7 @@ def cns_match(cns1, cns2, clone_ids):
     return True
 
 
-def refined_scnt_with_adjacencies_and_telomeres(segments, scnt, adjacencies=None, telomere_positions=None, allow_unit_segments=True):
+def refined_scnt_with_adjacencies_and_telomeres(segments, scnt, adjacencies=None, telomere_positions=None, allow_unit_segments=True, ):
     fragments = deepcopy(segments)
     if telomere_positions is None:
         telomere_positions = []

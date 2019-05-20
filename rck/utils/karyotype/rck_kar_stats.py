@@ -5,7 +5,7 @@ from rck.core.graph import construct_hiag_inflate_from_haploid_data
 from rck.core.io import read_scnt_from_source, read_acnt_from_source, read_scnb_from_source, read_adjacency_groups_from_source, read_positions_from_source, get_logging_cli_parser, \
     get_standard_logger_from_args, EXTERNAL_NA_ID
 from rck.core.structures import get_ref_telomeres_from_segments, AdjacencyType, AdjacencyGroupType
-from utils.karyotype.analysis import adjacency_groups_molecule_violations, adjacency_groups_labeling_violations, adjacency_groups_general_violations
+from rck.utils.karyotype.analysis import adjacency_groups_molecule_violations, adjacency_groups_labeling_violations, adjacency_groups_general_violations
 
 
 def main():
