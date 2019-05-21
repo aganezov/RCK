@@ -30,7 +30,7 @@ class Strand(Enum):
         if not isinstance(other, Strand):
             return False
         if self.value != other.value:
-            return self.value == "-"
+            return self.value == 0
         return False
 
 

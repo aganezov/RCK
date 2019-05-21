@@ -289,7 +289,7 @@ def main():
         adjacency_groups = []
         logger.info("No information about adjacency groups was provided")
 
-    if args.do_preprocess and args.do_pre_scnt:
+    if args.do_preprocess and args.do_pre_adg:
         logger.info("Inferring short NAs labeling adjacency groups (to disable use the --pre-no-adg flag)")
         short_inf_labeling_adjacency_groups = infer_short_nas_labeling_groups(adjacencies=[a for a in input_adjacencies if a.adjacency_type == AdjacencyType.NOVEL],
                                                                               gid_suffix=args.pre_adg_sl_gid_suffix, max_size=args.pre_adg_sl_max_size,

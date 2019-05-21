@@ -16,14 +16,11 @@ class CloneCollectionCNDistanceInstance(object):
 
 
 def cn_distance(segments1, scnt1, segments2, scnt2, both_haplotype_specific=False):
-    all_positions = []
-    positions_by_chr = defaultdict(list)
+    positions_by_chr = defaultdict(set)
     for segments in [segments1, segments2]:
         for segment in segments:
-            all_positions.append(segment.start_position)
-            all_positions.append(segment.end_position)
-            positions_by_chr[segment.chromosome].append(segment.start_position)
-            positions_by_chr[segment.chromosome].append(segment.end_position)
+            positions_by_chr[segment.chromosome].add(segment.start_position)
+            positions_by_chr[segment.chromosome].add(segment.end_position)
     outermost_positions_per_chromosomes = {}
     for chr_name, positions in positions_by_chr.items():
         outermost_positions_per_chromosomes[chr_name] = {
@@ -32,9 +29,14 @@ def cn_distance(segments1, scnt1, segments2, scnt2, both_haplotype_specific=Fals
         }
     segments1, scnt1, _ = refined_scnt(segments=segments1, scnt=scnt1, merge_fragments=False, fill_gaps=True, extend_outermost=True,
                                        outermost_positions=outermost_positions_per_chromosomes)
-    segments1, scnt1, _ = refined_scnt_with_adjacencies_and_telomeres(segments=segments1, scnt=scnt1, telomere_positions=all_positions)
     segments2, scnt2, _ = refined_scnt(segments=segments2, scnt=scnt2, merge_fragments=False, fill_gaps=True, extend_outermost=True,
                                        outermost_positions=outermost_positions_per_chromosomes)
+    all_positions = set()
+    for segments in [segments1, segments2]:
+        for segment in segments:
+            all_positions.add(segment.start_position)
+            all_positions.add(segment.end_position)
+    segments1, scnt1, _ = refined_scnt_with_adjacencies_and_telomeres(segments=segments1, scnt=scnt1, telomere_positions=all_positions)
     segments2, scnt2, _ = refined_scnt_with_adjacencies_and_telomeres(segments=segments2, scnt=scnt2, telomere_positions=all_positions)
     clone_ids1, clone_ids2 = list(set(scnt1.keys())), list(set(scnt2.keys()))
     matching_clone_ids_cnt = min((len(clone_ids1), len(clone_ids2)))
