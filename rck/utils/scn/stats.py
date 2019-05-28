@@ -28,9 +28,9 @@ def cn_distance(segments1, scnt1, segments2, scnt2, both_haplotype_specific=Fals
             "end":   max(positions, key=lambda p: p.coordinate)
         }
     segments1, scnt1, _ = refined_scnt(segments=segments1, scnt=scnt1, merge_fragments=False, fill_gaps=True, extend_outermost=True,
-                                       outermost_positions=outermost_positions_per_chromosomes)
+                                       outermost_positions=outermost_positions_per_chromosomes, outermost_positions_margin=0)
     segments2, scnt2, _ = refined_scnt(segments=segments2, scnt=scnt2, merge_fragments=False, fill_gaps=True, extend_outermost=True,
-                                       outermost_positions=outermost_positions_per_chromosomes)
+                                       outermost_positions=outermost_positions_per_chromosomes, outermost_positions_margin=0)
     all_positions = set()
     for segments in [segments1, segments2]:
         for segment in segments:
