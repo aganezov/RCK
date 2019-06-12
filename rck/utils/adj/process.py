@@ -271,12 +271,13 @@ def filter_adjacencies_by_size(adjacencies, min_size=0, max_size=1000000000, siz
             adj_size = adj.distance_non_hap
         if not allow_intra_chr and adj.position1.chromosome == adj.position2.chromosome:
             continue
-        if adj_size == 0 and allow_self_loops:
-            yield adj
-        elif (adj_size == -1 or adj.position1.chromosome != adj.position2.chromosome) and allow_inter_chr:
-            yield adj
-        elif min_size <= adj_size <= max_size:
-            yield adj
+        if not allow_inter_chr and (adj_size == -1 or adj.position1.chromosome != adj.position2.chromosome):
+            continue
+        if not allow_self_loops and adj_size == 0:
+            continue
+        if adj_size < min_size or adj_size > max_size:
+            continue
+        yield adj
 
 
 def coordinate_in_any_segment(coordinate, segments):
