@@ -11,6 +11,7 @@ from collections import defaultdict
 from copy import deepcopy
 from enum import Enum
 
+from rck.core.graph import IntervalAdjacencyGraph
 from rck.core.structures import AdjacencyCopyNumberProfile, AdjacencyGroup, CNBoundaries, SegmentCopyNumberBoundaries, AdjacencyGroupType
 from rck.core.structures import SegmentCopyNumberProfile, Haplotype, AdjacencyType, Phasing
 from rck.core.structures import Position, Strand, Adjacency, Segment
@@ -1232,6 +1233,32 @@ def write_scnt_to_shatterseek_destination(destination, segments, scnt, clone_id=
 def write_scnt_to_shatterseek_file(file_name, segments, scnt, clone_id=None, default=0, output_header=True):
     with open(file_name, "wt") as dest:
         write_scnt_to_shatterseek_destination(destination=dest, segments=segments, scnt=scnt, clone_id=clone_id, default=default, output_header=output_header)
+
+
+def iter_text_edge_list_representation_for_graph(graph: IntervalAdjacencyGraph):
+    for edge in graph.segment_edges(data=True):
+        u, v, data = edge
+        cn = str(data.get("copy_number", 0))
+        yield "\t".join((map(str, (u, v, cn, "S"))))
+    for edge in graph.adjacency_edges(data=True):
+        u, v, data = edge
+        cn = str(data.get("copy_number", 0))
+        yield "\t".join((map(str, (u, v, cn, "A"))))
+
+
+def iter_text_representation_for_graph(graph, style="edge-list"):
+    if style == "edge-list":
+        return iter_text_edge_list_representation_for_graph(graph=graph)
+
+
+def write_graph_to_destination(graph, destination, style="edge-list"):
+    for line in iter_text_representation_for_graph(graph=graph, style=style):
+        print(line, file=destination)
+
+
+def write_graph_to_file(graph, file_name, style="edge-list"):
+    with open(file_name, "wt") as destination:
+        write_graph_to_destination(graph=graph, destination=destination, style=style)
 
 
 def get_full_path(path):
