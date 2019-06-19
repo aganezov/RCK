@@ -31,8 +31,8 @@ def main():
             common_clones = set(acnt.keys()) & set(scnt.keys())
             if len(common_clones) == 0:
                 raise ValueError("No common clones in Adjacency and Segment Copy Number tensors")
-            args.clone_id = sorted(common_clones)[0]
-        acnp, scnp = acnt[args.clone_id], scnt[args.clone_id]
+            args.clone = sorted(common_clones)[0]
+        acnp, scnp = acnt[args.clone], scnt[args.clone]
         hiag.assign_copy_numbers_from_scn_profile(scn_profile=scnp)
         hiag.assign_copy_numbers_from_acn_profile(acn_profile=acnp)
         if not args.include_cn_0:
