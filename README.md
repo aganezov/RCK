@@ -141,6 +141,8 @@ The following two files depict the inferred clone- and haplotype-specific karyot
 
 For information about the format of the inferred clone- and haplotype-specific copy numbers on segments/adjacencies please refer to [segment](docs/Segments.md)/[adjacency](docs/Adjacencies.md) documentations
 
+Results in the original [manuscript](https://www.biorxiv.org/content/10.1101/560839v1) can be found in the [dedicated Github repository](https://github.com/aganezov/RCK-pub-data). 
+
 ### Citation
 When using RCK's cancer karyotype reconstruction algorithm or any of RCK's utilities, please cite the following paper: 
 
