@@ -4,7 +4,7 @@ from collections import defaultdict
 from rck.core.graph import construct_hiag_inflate_from_haploid_data
 from rck.core.io import read_scnt_from_source, read_acnt_from_source, read_scnb_from_source, read_adjacency_groups_from_source, read_positions_from_source, get_logging_cli_parser, \
     get_standard_logger_from_args, EXTERNAL_NA_ID
-from rck.core.structures import get_ref_telomeres_from_segments, AdjacencyType, AdjacencyGroupType
+from rck.core.structures import get_ref_telomeres_from_segments, AdjacencyType, AdjacencyGroupType, Segment
 from rck.utils.karyotype.analysis import adjacency_groups_molecule_violations, adjacency_groups_labeling_violations, adjacency_groups_general_violations
 
 
@@ -130,6 +130,13 @@ def main():
         else:
             logger.info("Everything is OK! in clone {clone_id} all extremities have non-negative copy number excess, and inferred telomere sites concur with the input"
                         "".format(clone_id=clone_id))
+        length = 0
+        for u, v, data in hiag.segment_edges():
+            s: Segment = data["object"]
+            length += s.length * data["copy_number"]
+        logger.info(f"Total length for clone {clone_id} = {length}")
+        chromosome_cnt = sum(hiag.node_imbalance(node) for node in hiag.nodes(data=False)) / 2
+        logger.info(f"Total number of chromosomes in clone {clone_id} = {chromosome_cnt}")
 
 
 if __name__ == "__main__":
