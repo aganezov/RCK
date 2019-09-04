@@ -11,9 +11,9 @@ sys.path.append(current_dir)
 
 import rck
 from rck.core.io import get_logging_cli_parser, get_standard_logger_from_args, read_adjacencies_from_source, write_adjacencies_to_vcf_sniffles_destination, \
-    write_adjacencies_to_circa_destination, read_chr_sizes_from_source, write_segments_to_circa_destination
+    write_adjacencies_to_circa_destination, read_chr_sizes_from_source, write_segments_to_circa_destination, write_adjacencies_to_bedpe_destination
 from rck.core.structures import AdjacencyType
-from rck.utils.adj.process import get_circa_adj_cnt
+from rck.utils.adj.process import get_circa_adj_cnt, filter_adjacencies_by_size
 
 
 def main():
@@ -54,6 +54,14 @@ def main():
     circa_density_parser.add_argument("--element-adj-cnt-full", action="store_true", dest="circa_element_adj_cnt_full")
     circa_density_parser.add_argument("-o", "--output", type=argparse.FileType("wt"), default=sys.stdout)
     ###
+    bedpe_parser = subparsers.add_parser("bedpe", parents=[cli_logging_parser],
+                                                 help="Convert RCK Adjacencies to the BEDPE format with only intra-chromosomal adjacencies considered")
+    bedpe_parser.add_argument("rck_adj", type=argparse.FileType("rt"), default=sys.stdin)
+    bedpe_parser.add_argument("--separator", default="\t")
+    bedpe_parser.add_argument("--extra-separator", default=";")
+    bedpe_parser.add_argument("--name-extra-field", default=None)
+    bedpe_parser.add_argument("-o", "--output", type=argparse.FileType("wt"), default=sys.stdout)
+    ###
     args = parser.parse_args()
     logger = get_standard_logger_from_args(args=args, program_name="RCK-UTILS-NAS-rck2x")
     logger.info("Reading adjacencies from {file}".format(file=args.rck_adj))
@@ -90,6 +98,10 @@ def main():
             segment.extra[args.element + "_cnt"] = cnt * segment.length / args.window_size
             segments.append(segment)
         write_segments_to_circa_destination(destination=args.output, segments=segments, extra=[args.element + "_cnt"])
+    elif args.command == "bedpe":
+        logger.info(f"Converting and writing input RCK formatted adjacencies into BEDPE format to {args.output}")
+        adjacencies = filter_adjacencies_by_size(adjacencies=adjacencies, allow_inter_chr=True)
+        write_adjacencies_to_bedpe_destination(destination=args.output, adjacencies=adjacencies, name_extra_field=args.name_extra_field)
     logger.info("Success")
 
 

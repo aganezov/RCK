@@ -10,6 +10,7 @@ import os
 from collections import defaultdict
 from copy import deepcopy
 from enum import Enum
+from typing import Iterable
 
 from rck.core.graph import IntervalAdjacencyGraph
 from rck.core.structures import AdjacencyCopyNumberProfile, AdjacencyGroup, CNBoundaries, SegmentCopyNumberBoundaries, AdjacencyGroupType
@@ -688,6 +689,20 @@ def write_adjacencies_to_circa_destination(destination, adjacencies, size_extra_
             adj_size = adj.distance_non_hap
         data[CIRCA_SIZE] = adj_size
         writer.writerow(data)
+
+
+def write_adjacencies_to_bedpe_file(file_name, adjacencies, name_extra_field=None):
+    with open(file_name, "wt") as dest:
+        write_adjacencies_to_bedpe_destination(destination=dest, adjacencies=adjacencies, name_extra_field=name_extra_field)
+
+
+def write_adjacencies_to_bedpe_destination(destination, adjacencies: Iterable[Adjacency], name_extra_field=None):
+    for adj in adjacencies:
+        print(adj.position1.chromosome, adj.position1.coordinate, adj.position1.coordinate,
+              adj.position2.chromosome, adj.position2.coordinate, adj.position2.coordinate,
+              adj.extra.get(name_extra_field, adj.extra[EXTERNAL_NA_ID]),
+              "NA",
+              adj.position1.strand, adj.position2.strand, sep="\t", file=destination)
 
 
 def write_segments_to_circa_destination(destination, segments, extra=None, extra_fill="."):
