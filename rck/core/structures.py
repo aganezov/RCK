@@ -195,6 +195,17 @@ class Position(object):
             return 3000000000
         return abs(pos1.coordinate - pos2.coordinate)
 
+    @staticmethod
+    def get_reciprocal(position: "Position"):
+        result = deepcopy(position)
+        if position.strand == Strand.FORWARD:
+            result.coordinate += 1
+            result.strand = Strand.REVERSE
+        else:
+            result.coordinate -= 1
+            result.strand = Strand.FORWARD
+        return result
+
 
 class PositionCluster(object):
     def __init__(self, positions):

@@ -9,6 +9,8 @@ import math
 from collections import Counter
 import pandas as pd
 
+from rck.utils.adj.analysis import get_complex_rearrangements_signatures
+
 current_file_level = 3
 current_dir = os.path.dirname(os.path.realpath(__file__))
 for _ in range(current_file_level):
@@ -16,9 +18,10 @@ for _ in range(current_file_level):
 sys.path.append(current_dir)
 
 import rck
-from rck.core.io import write_adjacencies_to_destination, read_adjacencies_from_source, get_logging_cli_parser
+from rck.core.io import write_adjacencies_to_destination, read_adjacencies_from_source, get_logging_cli_parser, write_complex_rearr_signature_groups_to_destination, \
+    read_acnt_from_source
 from rck.utils.adj.convert import *
-from rck.utils.adj.process import filter_adjacencies_by_chromosomal_regions, get_shared_nas_parser, ORIGIN_IDS
+from rck.utils.adj.process import filter_adjacencies_by_chromosomal_regions, get_shared_nas_parser, ORIGIN_IDS, refined_adjacencies_reciprocal
 from rck.utils.adj.stats import merged_source_tally, get_size_bins
 
 
@@ -109,6 +112,17 @@ def main():
     survivor_stat_parser.add_argument("--size-extra-seq-field")
     survivor_stat_parser.add_argument("-o", "--output", type=argparse.FileType("wt"), default=sys.stdout)
     #######
+    complex_parser = subparsers.add_parser("complex-signatures", parents=[cli_logging_parser])
+    complex_parser.add_argument("rck_adj", nargs="?", type=argparse.FileType("rt"), default=sys.stdin)
+    complex_parser.add_argument("--separator", default="\t")
+    complex_parser.add_argument("--extra-separator", default=";")
+    complex_parser.add_argument("--pre-reciprocal", action="store_true", dest="pre_reciprocal")
+    complex_parser.add_argument("--pre-reciprocal-max-dist", type=int, default=50)
+    complex_parser.add_argument("--min-k", type=int, default=3)
+    complex_parser.add_argument("--output", "-o", type=argparse.FileType("wt"), default=sys.stdout)
+    complex_parser.add_argument("--output-separator", default="\t")
+    complex_parser.add_argument("--output-internal-separator", default=",")
+    #######
     args = parser.parse_args()
     # if args.vis
     if args.command == "survivor-stat":
@@ -126,6 +140,14 @@ def main():
                 str_source = ";".join(source)
                 data[str_source] = tally[source].get(rb, 0)
             writer.writerow(data)
+    elif args.command == "complex-signatures":
+        adjacencies = read_adjacencies_from_source(source=args.rck_adj, separator=args.separator, extra_separator=args.extra_separator)
+        if args.pre_reciprocal:
+            adjacencies = refined_adjacencies_reciprocal(novel_adjacencies=adjacencies, max_distance=args.pre_reciprocal_max_dist)
+        complex_rearrangements_signatures = get_complex_rearrangements_signatures(adjacencies=adjacencies)
+        complex_rearrangements_signatures = [crs for crs in complex_rearrangements_signatures if crs.k >= args.min_k]
+        write_complex_rearr_signature_groups_to_destination(destination=args.output, signatures=complex_rearrangements_signatures,
+                                                            separator=args.output_separator, internal_separator=args.output_internal_separator)
     elif args.command == "cnt":
         import seaborn as sns
         import matplotlib.pyplot as plt

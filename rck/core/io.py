@@ -16,6 +16,7 @@ from rck.core.graph import IntervalAdjacencyGraph
 from rck.core.structures import AdjacencyCopyNumberProfile, AdjacencyGroup, CNBoundaries, SegmentCopyNumberBoundaries, AdjacencyGroupType
 from rck.core.structures import SegmentCopyNumberProfile, Haplotype, AdjacencyType, Phasing
 from rck.core.structures import Position, Strand, Adjacency, Segment
+from rck.utils.adj.analysis import ComplexRearrSignature
 
 csv.field_size_limit(sys.maxsize)
 
@@ -1289,3 +1290,25 @@ def read_chr_sizes_from_source(source):
         data = line.split("\t")
         result[data[0]] = int(data[1])
     return result
+
+
+COMPLEX_REARR_SIGN_K = "k"
+COMPLEX_REARR_SIGN_ADJS = "adjs"
+COMPLEX_REARR_SIGN_LOCS = "locs"
+
+
+def write_complex_rearr_signature_groups_to_file(file_name, signatures: Iterable[ComplexRearrSignature], separator="\t", internal_separator=","):
+    with open(file_name, "wt") as destination:
+        write_complex_rearr_signature_groups_to_destination(destination=destination, signatures=signatures, separator=separator, internal_separator=internal_separator)
+
+
+def write_complex_rearr_signature_groups_to_destination(destination, signatures: Iterable[ComplexRearrSignature], separator="\t", internal_separator=","):
+    writer = csv.DictWriter(destination, fieldnames=[COMPLEX_REARR_SIGN_K, COMPLEX_REARR_SIGN_ADJS, COMPLEX_REARR_SIGN_LOCS], delimiter=separator)
+    writer.writeheader()
+    for signature in signatures:
+        data = {
+            COMPLEX_REARR_SIGN_K: signature.k,
+            COMPLEX_REARR_SIGN_ADJS: internal_separator.join(adj.extra.get(EXTERNAL_NA_ID, adj.distance_non_hap) for adj in signature.adjacencies),
+            COMPLEX_REARR_SIGN_LOCS: internal_separator.join(str(adj.position1) for adj in signature.ref_adjacencies)
+        }
+        writer.writerow(data)
