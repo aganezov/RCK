@@ -269,15 +269,15 @@ def filter_adjacencies_by_size(adjacencies, min_size=0, max_size=1000000000, siz
                 pass
         if adj_size is None:
             adj_size = adj.distance_non_hap
-        if not allow_intra_chr and adj.position1.chromosome == adj.position2.chromosome:
-            continue
-        if not allow_inter_chr and (adj_size == -1 or adj.position1.chromosome != adj.position2.chromosome):
-            continue
-        if not allow_self_loops and adj_size == 0:
-            continue
-        if adj_size < min_size or adj_size > max_size:
-            continue
-        yield adj
+        if adj.position1.chromosome != adj.position2.chromosome:
+            if allow_inter_chr:
+                yield
+        elif allow_intra_chr:
+            if not allow_self_loops and adj_size == 0:
+                continue
+            if adj_size < min_size or adj_size > max_size:
+                continue
+            yield adj
 
 
 def coordinate_in_any_segment(coordinate, segments):
@@ -548,7 +548,7 @@ def element_before_window(window, element, adj_full_cnt=True):
     return True
 
 
-def element_in_window(window, element,  adj_full_cnt=True):
+def element_in_window(window, element, adj_full_cnt=True):
     if isinstance(element, Position):
         return window.start_coordinate <= element.coordinate <= window.end_coordinate
     elif isinstance(element, Adjacency):
@@ -587,7 +587,7 @@ def get_circa_adj_cnt(adjacencies, window_size=10000000, chr_sizes=None, element
         if windows_boundaries[-1] != end:
             windows_boundaries.append(end)
         for lb, rb in zip(windows_boundaries[:-1], windows_boundaries[1:]):
-            segment = Segment.from_chromosome_coordinates(chromosome=chr_name, start=lb+1, end=rb)
+            segment = Segment.from_chromosome_coordinates(chromosome=chr_name, start=lb + 1, end=rb)
             windows_by_chr[chr_name].append(segment)
     # counted_entries = set()
     for chr_name in windows_by_chr.keys():
@@ -620,6 +620,6 @@ def get_circa_adj_cnt(adjacencies, window_size=10000000, chr_sizes=None, element
                 continue
             elif element_in_window(current_window, entry, adj_full_cnt=adj_full_cnt):
                 result[current_window] += 1
-            else:   # after window
+            else:  # after window
                 current_window = next(chr_windows, None)
     return result
