@@ -271,7 +271,7 @@ def filter_adjacencies_by_size(adjacencies, min_size=0, max_size=1000000000, siz
             adj_size = adj.distance_non_hap
         if adj.position1.chromosome != adj.position2.chromosome:
             if allow_inter_chr:
-                yield
+                yield adj
         elif allow_intra_chr:
             if not allow_self_loops and adj_size == 0:
                 continue
