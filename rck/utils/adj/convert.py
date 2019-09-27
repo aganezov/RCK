@@ -5,7 +5,7 @@ from copy import deepcopy
 
 import vcf
 
-from rck.core.io import EXTERNAL_NA_ID, SVTYPE, write_adjacencies_to_destination, COPY_NUMBER
+from rck.core.io import EXTERNAL_NA_ID, SVTYPE, write_adjacencies_to_destination, COPY_NUMBER, parse_segment_extra
 from rck.core.structures import Strand, Position, Adjacency, AdjacencyType, Phasing, Segment
 
 STRIP_CHR = "strip_CHR"
@@ -527,7 +527,8 @@ def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacenc
         separator = "_" if len(survivor_prefix) > 0 else ""
         extra[survivor_prefix + separator + "supporting_source_ids"] = sorted(supporting_source_ids)
         extra[survivor_prefix + separator + "sources"] = source_vector
-        extra[survivor_prefix + separator + "supporting_sources"] = [source for source, flag in zip(source_vector, extra.get("supp_vec", [0 for _ in source_vector])) if int(flag) != 0]
+        extra[survivor_prefix + separator + "supporting_sources"] = [source for source, flag in zip(source_vector, extra.get("supp_vec", [0 for _ in source_vector])) if
+                                                                     int(flag) != 0]
         na = Adjacency(position1=pos1, position2=pos2, extra=extra)
         nas_by_ids[record_id].append(na)
     nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
@@ -1107,13 +1108,17 @@ def get_chrs_regions_string_lists_from_source(source):
 
 
 def parse_segment_chr_region(string):
-    if ":" not in string and "\t" not in string:
+    if ":" not in string.split()[0] and "\t" not in string:
         return Segment.from_chromosome_coordinates(chromosome=string.strip(), start=0, end=3000000000)
-    if ":" in string:
+    if ":" in string.split()[0]:
         chromosome, start_end = string.split(":")
         start, end = start_end.split("-")
         start, end = int(start), int(end)
         return Segment.from_chromosome_coordinates(chromosome=chromosome.lower(), start=start, end=end)
-    chromosome, start, end = string.split("\t")
+    data = string.split("\t")
+    chromosome, start, end = data[:3]
     start, end = int(start), int(end)
-    return Segment.from_chromosome_coordinates(chromosome=chromosome.lower(), start=start, end=end)
+    segment = Segment.from_chromosome_coordinates(chromosome=chromosome.lower(), start=start, end=end)
+    if len(data) > 3:
+        segment.extra.update(parse_segment_extra(extra=data[3], extra_separator=";"))
+    return segment

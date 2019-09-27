@@ -201,7 +201,12 @@ class Merger(object):
         return case1 or case2
 
 
-def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude=None, include_both=True, exclude_both=False, include_spanning=False, exclude_spanning=False):
+ANNOTATE_RETAINED_EXTRA_FIELD = "retained_by"
+
+
+def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude=None, include_both=True, exclude_both=False, include_spanning=False, exclude_spanning=False,
+                                              annotate_retained=False, annotate_retained_extra_field_prefix=None, annotated_retained_segments_extra_field=None,
+                                              annotate_short_circ=False):
     if include is None:
         include = []
     if exclude is None:
@@ -218,21 +223,34 @@ def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude
         exclude_by_chr[chr] = sorted(exclude_by_chr[chr], key=lambda s: (s.start_coordinate, s.end_coordinate))
     include_by_chr = dict(include_by_chr)
     exclude_by_chr = dict(exclude_by_chr)
+    annotate_retained_extra_field = ANNOTATE_RETAINED_EXTRA_FIELD
+    if annotate_retained_extra_field_prefix is not None:
+        annotate_retained_extra_field = annotated_retained_segments_extra_field + annotate_retained_extra_field
     for adj in adjacencies:
         retain = True
         chr1, chr2 = adj.position1.chromosome, adj.position2.chromosome
         chr1, chr2 = chr1.lower(), chr2.lower()
         include_segments_chr1 = include_by_chr.get(chr1, [])
         include_segments_chr2 = include_by_chr.get(chr2, [])
+        annotations_segments = []
         if len(include_segments_chr1) != 0 or len(include_segments_chr2) != 0:
-            chr1in = coordinate_in_any_segment(coordinate=adj.position1.coordinate, segments=include_segments_chr1)
-            chr2in = coordinate_in_any_segment(coordinate=adj.position2.coordinate, segments=include_segments_chr2)
+            chr1_segments_in = coordinate_in_segments(coordinate=adj.position1.coordinate, segments=include_segments_chr1, short_circ=annotate_short_circ)
+            chr2_segments_in = coordinate_in_segments(coordinate=adj.position2.coordinate, segments=include_segments_chr2, short_circ=annotate_short_circ)
+            chr1in = len(chr1_segments_in) > 0
+            chr2in = len(chr2_segments_in) > 0
             if include_both:
                 retain &= chr1in and chr2in
             else:
                 retain &= chr1in or chr2in
+            if retain and annotate_retained:
+                annotations_segments.extend(chr1_segments_in)
+                annotations_segments.extend(chr2_segments_in)
         elif include_spanning and chr1 == chr2 and len(include_segments_chr1) != 0:
-            retain |= coordinates_span_any_segment(coordinate1=adj.position1.coordinate, coordinate2=adj.position2.coordinate, segments=include_segments_chr1, partial=False)
+            spanned_segments = coordinates_span_segments(coordinate1=adj.position1.coordinate, coordinate2=adj.position2.coordinate, segments=include_segments_chr1, partial=False,
+                                                         short_circ=annotate_short_circ)
+            retain |= len(spanned_segments) > 0
+            if retain and annotate_retained:
+                annotations_segments.extend(spanned_segments)
         elif len(include_by_chr) > 0:
             retain = False
         if not retain:
@@ -249,6 +267,11 @@ def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude
         elif exclude_spanning and chr1 == chr2 and len(exclude_segments_chr1) != 0:
             retain &= not coordinates_span_any_segment(coordinate1=adj.position1.coordinate, coordinate2=adj.position2.coordinate, segments=exclude_segments_chr1, partial=False)
         if retain:
+            if annotate_retained and len(annotations_segments) > 0:
+                annotations = set()
+                for segment in annotations_segments:
+                    annotations.add(segment.extra.get(annotated_retained_segments_extra_field, segment.stable_id_non_hap))
+                adj.extra[annotate_retained_extra_field] = sorted(annotations)
             yield adj
 
 
@@ -278,6 +301,37 @@ def filter_adjacencies_by_size(adjacencies, min_size=0, max_size=1000000000, siz
             if adj_size < min_size or adj_size > max_size:
                 continue
             yield adj
+
+
+def coordinate_in_segments(coordinate, segments, short_circ=False):
+    result = []
+    segments = sorted(segments, key=lambda s: (s.start_coordinate, s.end_coordinate))
+    for segment in segments:
+        if coordinate < segment.start_coordinate:
+            break
+        if segment.start_coordinate <= coordinate <= segment.end_coordinate:
+            result.append(segment)
+            if short_circ:
+                return result
+    return result
+
+
+def coordinates_span_segments(coordinate1, coordinate2, segments, partial=True, short_circ=False):
+    result = []
+    coordinate1, coordinate2 = sorted([coordinate1, coordinate2])
+    segments = sorted(segments, key=lambda s: (s.start_coordinate, s.end_coordinate))
+    for segment in segments:
+        if coordinate2 < segment.start_coordinate:
+            break
+        if partial and (segment.start_coordinate <= coordinate1 <= segment.end_coordinate or segment.start_coordinate <= coordinate2 <= segment.end_coordinate):
+            result.append(segment)
+            if short_circ:
+                return result
+        elif coordinate1 <= segment.start_coordinate and coordinate2 >= segment.end_coordinate:
+            result.append(segment)
+            if short_circ:
+                return result
+    return result
 
 
 def coordinate_in_any_segment(coordinate, segments):

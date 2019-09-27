@@ -37,6 +37,10 @@ def main():
     filter_parser.add_argument("--keep-extra-field-regex", action="append", default=None)
     filter_parser.add_argument("--keep-extra-field-regex-file", type=argparse.FileType("rt"), default=None)
     filter_parser.add_argument("--keep-extra-field-missing-strategy", choices=[KEEP, REMOVE], default=KEEP)
+    filter_parser.add_argument("--keep-annotate", action="store_true", dest="annotate_retained")
+    filter_parser.add_argument("--keep-annotate-s-extra-field", default=None, dest="annotate_seg_extra_field")
+    filter_parser.add_argument("--keep-annotate-short-circ", action="store_true", dest="annotate_shirt_circ")
+    filter_parser.add_argument("--keep-annotate-extra-prefix", dest="annotate_extra_prefix")
     filter_parser.add_argument("--remove-extra-field-regex", action="append", default=None)
     filter_parser.add_argument("--remove-extra-field-regex-file", type=argparse.FileType("rt"), default=None)
     filter_parser.add_argument("--remove-extra-field-missing-strategy", choices=[KEEP, REMOVE], default=KEEP)
@@ -164,7 +168,9 @@ def main():
         exclude_regions = [parse_segment_chr_region(string) for string in exclude_chrs_regions_strings]
         adjacencies = filter_adjacencies_by_chromosomal_regions(adjacencies=adjacencies, include=include_regions, exclude=exclude_regions,
                                                                 include_both=args.include_both, exclude_both=args.exclude_both,
-                                                                include_spanning=args.include_spanning, exclude_spanning=args.exclude_spanning)
+                                                                include_spanning=args.include_spanning, exclude_spanning=args.exclude_spanning,
+                                                                annotate_retained=args.annotate_retained, annotate_retained_extra_field_prefix=args.annotate_extra_prefix,
+                                                                annotated_retained_segments_extra_field=args.annotate_seg_extra_field, annotate_short_circ=args.annotate_shirt_circ)
         keep_extra_field_entries = args.keep_extra_field_regex if args.keep_extra_field_regex is not None else []
         if args.keep_extra_field_regex_file is not None:
             keep_extra_field_entries.extend(list(iter_over_string_entries_from_source(source=args.keep_extra_field_regex_file)))
