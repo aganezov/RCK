@@ -454,6 +454,8 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
                 strands = "+-"
             else:
                 raise ValueError("Unknown strands {missing STRANDS entry}")
+        if svtype == "INS" and hasattr(record.ALT[0], "sequence"):
+            extra["ALT"] = [alt.sequence for alt in record.ALT]
         strand1 = Strand.from_pm_string(string=strands[0])
         strand2 = Strand.from_pm_string(string=strands[1])
         if setup.get(STRIP_CHR, True):
