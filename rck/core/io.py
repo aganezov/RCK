@@ -771,9 +771,9 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
                 continue
             if is_info_extra_entry(entry=key):
                 entry_id = str(key).upper()
-                entry_number = "." if isinstance(value, (list, tuple)) else "1"
+                entry_number = "." if isinstance(value, (list, tuple)) or (isinstance(value, str) and "," in value) else "1"
                 if entry_id in extra_info_fields_and_numbers and extra_info_fields_and_numbers[entry_id] != entry_number:
-                    entry_number = "1"
+                    entry_number = "."
                 extra_info_fields_and_numbers[entry_id] = entry_number
             elif is_format_extra_entry(entry=key):
                 entry_id = str(key).upper()
