@@ -734,7 +734,7 @@ def write_adjacencies_to_vcf_sniffles_file(file_name, adjacencies, extra="all", 
 
 
 def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extra="all", extra_fill=".", sort_adjacencies=True,
-                                                  dummy_clone="dummy_clone", clone_suffix=""):
+                                                  dummy_clone="dummy_clone", clone_suffix="", alt_extra=None):
     if sort_adjacencies:
         adjacencies = sorted(adjacencies, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
     adjacencies = list(adjacencies)
@@ -808,7 +808,13 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
         print(adjacency.position1.coordinate, end="\t", file=destination)  # POS
         print(adjacency.extra.get(EXTERNAL_NA_ID, adjacency.idx), end="\t", file=destination)  # ID
         print("N", end="\t", file=destination)  # REF
-        print("<{svtype}>".format(svtype=adjacency.extra.get(SVTYPE, "BND")), end="\t", file=destination)  # ALT
+        alt_extra_value = adjacency.extra.get(alt_extra, "1")
+        if not isinstance(alt_extra_value, list):
+            alt_extra_value = alt_extra_value.split(",")
+        if alt_extra is not None and all(map(lambda e: str(e).isalpha(), alt_extra_value)):
+            print(f'{",".join(map(str, alt_extra_value))}', end="\t", file=destination)     # ALT if there is sequence available and specified
+        else:
+            print("<{svtype}>".format(svtype=adjacency.extra.get(SVTYPE, "BND")), end="\t", file=destination)  # ALT
         print(".", end="\t", file=destination)  # QUAL
         print("PASS", end="\t", file=destination)  # FILTER
         print(get_vcf_info_string(adjacency=adjacency, extra_fields=sorted(extra_info_fields_and_numbers.keys()), extra_fill=extra_fill), end="\t", file=destination)  # INFO
