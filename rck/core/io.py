@@ -819,9 +819,10 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
         print("PASS", end="\t", file=destination)  # FILTER
         print(get_vcf_info_string(adjacency=adjacency, extra_fields=sorted(extra_info_fields_and_numbers.keys()), extra_fill=extra_fill), end="\t", file=destination)  # INFO
         print(":".join(extra_format_fields_and_numbers.keys()), end="\t", file=destination)  # FORMAT
+        clones_strings = []
         for clone_id in clone_ids:
-            print(get_vcf_format_string(adjacency=adjacency, clone_id=clone_id, format_fields=sorted(extra_format_fields_and_numbers.keys())), end="\t", file=destination)  # SAMPLE
-        print(file=destination)
+            clones_strings.append(get_vcf_format_string(adjacency=adjacency, clone_id=clone_id, format_fields=sorted(extra_format_fields_and_numbers.keys())))
+        print("\t".join(clones_strings), file=destination)  # SAMPLES
 
 
 def write_acnt_to_file(file_name, acnt, adjacencies, clone_ids=None,
