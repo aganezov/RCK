@@ -734,7 +734,7 @@ def write_adjacencies_to_vcf_sniffles_file(file_name, adjacencies, extra="all", 
 
 
 def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extra="all", extra_fill=".", sort_adjacencies=True,
-                                                  dummy_clone="dummy_clone", clone_suffix="", alt_extra=None):
+                                                  dummy_clone="dummy_clone", clone_suffix="", alt_extra=None, ref_extra=None):
     if sort_adjacencies:
         adjacencies = sorted(adjacencies, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
     adjacencies = list(adjacencies)
@@ -807,7 +807,13 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
         print(adjacency.position1.chromosome, end="\t", file=destination)  # CHROM
         print(adjacency.position1.coordinate, end="\t", file=destination)  # POS
         print(adjacency.extra.get(EXTERNAL_NA_ID, adjacency.idx), end="\t", file=destination)  # ID
-        print("N", end="\t", file=destination)  # REF
+        ref_extra_value = adjacency.extra.get(ref_extra, "1")
+        if not isinstance(ref_extra_value, list):
+            ref_extra_value = [ref_extra_value]
+        if ref_extra is not None and all(map(lambda e: str(e).isalpha(), ref_extra_value)):
+            print(f'{",".join(map(str, ref_extra_value))}', end="\t", file=destination)
+        else:
+            print("N", end="\t", file=destination)  # REF
         alt_extra_value = adjacency.extra.get(alt_extra, "1")
         if not isinstance(alt_extra_value, list):
             alt_extra_value = alt_extra_value.split(",")

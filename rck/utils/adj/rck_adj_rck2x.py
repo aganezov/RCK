@@ -34,6 +34,7 @@ def main():
     vcf_parser.add_argument("--clone-suffix", default="")
     vcf_parser.add_argument("--dummy-clone", default="dummy_clone")
     vcf_parser.add_argument("--alt-extra")
+    vcf_parser.add_argument("--ref-extra")
     ###
     circa_parser = subparsers.add_parser("circa", parents=[cli_logging_parser], help="Convert RCK Adjacencies to the TSV format supported by Circa")
     circa_parser.add_argument("rck_adj", type=argparse.FileType("rt"), default=sys.stdin)
@@ -82,7 +83,7 @@ def main():
         logger.info("Writing adjacencies to {file}".format(file=args.output))
         write_adjacencies_to_vcf_sniffles_destination(destination=args.output, adjacencies=adjacencies, extra=extra,
                                                       dummy_clone=args.dummy_clone, clone_suffix=args.clone_suffix,
-                                                      alt_extra=args.alt_extra)
+                                                      alt_extra=args.alt_extra, ref_extra=args.ref_extra)
     elif args.command == "circa":
         logger.info("Converting input RCK formatted adjacencies into a Circa suitable format (extra column get transformed into a size column)")
         logger.info("Writing adjacencies info suitable for Circa to {file}".format(file=args.output))
