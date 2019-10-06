@@ -2,6 +2,7 @@ import csv
 import re
 from collections import defaultdict
 from copy import deepcopy
+from enum import Enum
 
 import vcf
 
@@ -154,6 +155,52 @@ def update_nas_ids(nas_by_ids_defaultdict, setup):
     return result
 
 
+class StandardizedSVType(Enum):
+    INS = "INS"
+    DEL = "DEL"
+    DUP = "DUP"
+    INV = "INV"
+    TRA = "TRA"
+
+
+def get_standardize_sv_type(adjacency: Adjacency):
+    # generic for all callers
+    if adjacency.position1.chromosome != adjacency.position2.chromosome:
+        return StandardizedSVType.TRA
+    strands = adjacency.position1.strand, adjacency.position2.strand
+    # generic for all callers
+    if strands == (Strand.REVERSE, Strand.FORWARD):
+        return StandardizedSVType.DUP
+    # generic for all callers
+    if strands[0] == strands[1]:
+        return StandardizedSVType.INV
+    if "OR_SVTYPE" in adjacency.extra:
+        ###
+        # covers Sniffles, PBSV, Delly, ...
+        ###
+        if "ins" in adjacency.extra["OR_SVTYPE"].lower():
+            return StandardizedSVType.INS
+        ###
+        # covers Sniffles, PBSV, Delly, ...
+        ###
+        if "del" in adjacency.extra["OR_SVTYPE"].lower():
+            return StandardizedSVType.DEL
+    ###
+    # more generic approach if both REF and ALT fields are present in the adjacency data
+    ###
+    if "ALT" in adjacency.extra and "REF" in adjacency.extra and adjacency.extra["ALT"].isalpha() and adjacency.extra["REF"].isalpha() and \
+            len(adjacency.extra["ALT"]) > len(adjacency.extra["REF"]):
+        return StandardizedSVType.INS
+    return StandardizedSVType.DEL
+
+
+def update_adjacencies_svtype(adjacencies, prefix=""):
+    for adj in adjacencies:
+        or_key = "_".join([prefix, "OR_SVTYPE"])
+        adj.extra[or_key] = adj.extra["SVTYPE"]
+        adj.extra["SVTYPE"] = get_standardize_sv_type(adjacency=adj).value
+
+
 DUPLICATED_ENTRIES_EXTRA = {
     "CHR2",
     "END",
@@ -195,6 +242,7 @@ def get_nas_from_lumpy_vcf_records(lumpy_vcf_records, setup=None):
                 else:
                     strand1, strand2 = get_del_na_strands_from_vcf_record(vcf_record=record)
                     coord1, coord2 = get_del_na_coords_from_vcf_record(vcf_record=record)
+                add_record_ref_alt_to_extra(sv_type, record, extra)
             else:
                 if "_" not in str(record.ID):
                     raise ValueError("Non standard id {sv_id} for a BND SV".format(sv_id=record.ID))
@@ -251,6 +299,7 @@ def get_nas_from_lumpy_vcf_records(lumpy_vcf_records, setup=None):
         else:
             raise Exception("Unknown SVTYPE {sv_type}".format(sv_type=sv_type))
     nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
+    update_adjacencies_svtype(adjacencies=nas_by_ids.values())
     return list(nas_by_ids.values())
 
 
@@ -339,6 +388,7 @@ def get_nas_from_longranger_vcf_records(longranger_vcf_records, setup=None):
                 extra[EXTERNAL_NA_ID] = base_sv_id
                 pos1 = Position(chromosome=chr1, coordinate=coord1, strand=strand1)
                 pos2 = Position(chromosome=chr2, coordinate=coord2, strand=strand2)
+                add_record_ref_alt_to_extra(sv_type, record, extra)
                 na = Adjacency(position1=pos1, position2=pos2, extra=extra)
                 nas_by_ids[base_sv_id].append(na)
                 processed_vcf_ids.add(base_sv_id)
@@ -346,6 +396,13 @@ def get_nas_from_longranger_vcf_records(longranger_vcf_records, setup=None):
                 raise Exception("Unknown SV type ({svtype}) for longranger".format(svtype=sv_type))
     nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
     return list(nas_by_ids.values())
+
+
+def add_record_ref_alt_to_extra(sv_type, record, extra):
+    if sv_type in ["INS", "DEL"] and hasattr(record.ALT[0], "sequence"):
+        extra["ALT"] = [alt.sequence for alt in record.ALT]
+        if len(record.REF) > 0:
+            extra["REF"] = record.REF
 
 
 def get_nas_from_manta_vcf_records(manta_vcf_records, setup=None):
@@ -411,6 +468,7 @@ def get_nas_from_manta_vcf_records(manta_vcf_records, setup=None):
             pos1 = Position(chromosome=chr1, coordinate=coord1, strand=strand1)
             pos2 = Position(chromosome=chr2, coordinate=coord2, strand=strand2)
             extra[EXTERNAL_NA_ID] = record_id
+            add_record_ref_alt_to_extra(svtype, record, extra)
             if svtype == "INS":
                 if "SVLEN" in record.INFO:
                     extra[SVLEN] = int(record.INFO["SVLEN"][0])
@@ -421,6 +479,7 @@ def get_nas_from_manta_vcf_records(manta_vcf_records, setup=None):
         else:
             raise Exception("Unknown SV type {svtype}".format(svtype=svtype))
     nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
+    update_adjacencies_svtype(adjacencies=nas_by_ids.values())
     return nas_by_ids.values()
 
 
@@ -454,8 +513,7 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
                 strands = "+-"
             else:
                 raise ValueError("Unknown strands {missing STRANDS entry}")
-        if svtype == "INS" and hasattr(record.ALT[0], "sequence"):
-            extra["ALT"] = [alt.sequence for alt in record.ALT]
+        add_record_ref_alt_to_extra(svtype, record, extra)
         strand1 = Strand.from_pm_string(string=strands[0])
         strand2 = Strand.from_pm_string(string=strands[1])
         if setup.get(STRIP_CHR, True):
@@ -470,6 +528,7 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
         nas_by_ids[record_id].append(na)
         processed_ids.add(record_id)
     nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
+    update_adjacencies_svtype(adjacencies=nas_by_ids.values(), prefix="sniffles")
     return nas_by_ids.values()
 
 
@@ -534,6 +593,7 @@ def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacenc
         na = Adjacency(position1=pos1, position2=pos2, extra=extra)
         nas_by_ids[record_id].append(na)
     nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
+    update_adjacencies_svtype(adjacencies=nas_by_ids.values(), prefix=survivor_prefix)
     return nas_by_ids.values()
 
 
@@ -581,6 +641,7 @@ def get_nas_from_svaba_vcf_records(svaba_vcf_records, source_type="sv", setup=No
             extra[EXTERNAL_NA_ID] = str(record.ID)
             extra["svtype"] = svtype
             na = Adjacency(position1=pos1, position2=pos2, extra=extra)
+            add_record_ref_alt_to_extra(svtype, record, extra)
             nas_by_ids[str(record.ID)].append(na)
         elif source_type == "sv":
             if record.ID in processed_vcf_ids:
@@ -622,6 +683,7 @@ def get_nas_from_svaba_vcf_records(svaba_vcf_records, source_type="sv", setup=No
         else:
             raise ValueError("unknown SvABA input type {source_type}. Only 'sv' or 'indel' are allowed".format(source_type=source_type))
     nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
+    update_adjacencies_svtype(adjacencies=nas_by_ids.values(), prefix="svaba")
     return nas_by_ids.values()
 
 
@@ -674,6 +736,7 @@ def get_nas_from_grocsv_vcf_records(grocsv_vcf_records, setup=None, samples=None
         else:
             raise Exception("Unknown SV type \"{svtype}\" for GROCSVS VCF entry".format(svtype=svtype))
     nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
+    update_adjacencies_svtype(adjacencies=nas_by_ids.values())
     return nas_by_ids.values()
 
 
@@ -706,6 +769,7 @@ def get_nas_from_naibr_source(source, setup=None):
         na = Adjacency(position1=pos1, position2=pos2, extra={EXTERNAL_NA_ID: na_id})
         result[na_id].append(na)
     result = update_nas_ids(nas_by_ids_defaultdict=result, setup=setup)
+    update_adjacencies_svtype(adjacencies=result.values())
     return list(result.values())
 
 
@@ -744,6 +808,7 @@ def get_nas_from_delly_vcf_records(delly_vcf_records, setup=None):
                 assert (strand1, strand2) == get_strands_from_CT_vcf_string(ct_string=ct_string)
             pos1 = Position(chromosome=chr1, coordinate=coord1, strand=strand1)
             pos2 = Position(chromosome=chr2, coordinate=coord2, strand=strand2)
+            add_record_ref_alt_to_extra(svtype, record, extra)
             extra = clear_duplicated_entries_extra(extra=extra)
             na = Adjacency(position1=pos1, position2=pos2, extra=extra)
             result[svid].append(na)
@@ -856,6 +921,7 @@ def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None, sil
                 pos1 = Position(chromosome=chr1, coordinate=coord1, strand=strand1)
                 pos2 = Position(chromosome=chr2, coordinate=coord2, strand=strand2)
                 extra = clear_duplicated_entries_extra(extra=extra)
+                add_record_ref_alt_to_extra(svtype, record, extra)
                 na = Adjacency(position1=pos1, position2=pos2, extra=extra)
                 result[svid].append(na)
                 processed_ids.add(svid)
@@ -911,6 +977,7 @@ def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None, sil
             else:
                 raise Exception("Unknonw SV type \"{svtype}\" for PBSV VCF input".format(svtype=svtype))
     result = update_nas_ids(nas_by_ids_defaultdict=result, setup=setup)
+    update_adjacencies_svtype(adjacencies=result.values())
     return result.values()
 
 
