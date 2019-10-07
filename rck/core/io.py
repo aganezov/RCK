@@ -807,18 +807,24 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
         print(adjacency.position1.chromosome, end="\t", file=destination)  # CHROM
         print(adjacency.position1.coordinate, end="\t", file=destination)  # POS
         print(adjacency.extra.get(EXTERNAL_NA_ID, adjacency.idx), end="\t", file=destination)  # ID
-        ref_extra_value = adjacency.extra.get(ref_extra, "1")
-        if not isinstance(ref_extra_value, list):
-            ref_extra_value = [ref_extra_value]
-        if ref_extra is not None and all(map(lambda e: str(e).isalpha(), ref_extra_value)):
-            print(f'{",".join(map(str, ref_extra_value))}', end="\t", file=destination)
+        ref_extra_list = "" if ref_extra is None else ref_extra.split(",")
+        for ref_ex in ref_extra_list.split(","):
+            ref_extra_value = adjacency.extra.get(ref_ex, "1")
+            if not isinstance(ref_extra_value, list):
+                ref_extra_value = [ref_extra_value]
+            if ref_extra is not None and all(map(lambda e: str(e).isalpha(), ref_extra_value)):
+                print(f'{",".join(map(str, ref_extra_value))}', end="\t", file=destination)
+                break
         else:
             print("N", end="\t", file=destination)  # REF
-        alt_extra_value = adjacency.extra.get(alt_extra, "1")
-        if not isinstance(alt_extra_value, list):
-            alt_extra_value = alt_extra_value.split(",")
-        if alt_extra is not None and all(map(lambda e: str(e).isalpha(), alt_extra_value)):
-            print(f'{",".join(map(str, alt_extra_value))}', end="\t", file=destination)     # ALT if there is sequence available and specified
+        alt_extra_list = "" if alt_extra is None else alt_extra.split(",")
+        for alt_ex in alt_extra_list.split(","):
+            alt_extra_value = adjacency.extra.get(alt_ex, "1")
+            if not isinstance(alt_extra_value, list):
+                alt_extra_value = alt_extra_value.split(",")
+            if alt_extra is not None and all(map(lambda e: str(e).isalpha(), alt_extra_value)):
+                print(f'{",".join(map(str, alt_extra_value))}', end="\t", file=destination)     # ALT if there is sequence available and specified
+                break
         else:
             print("<{svtype}>".format(svtype=adjacency.extra.get(SVTYPE, "BND")), end="\t", file=destination)  # ALT
         print(".", end="\t", file=destination)  # QUAL
