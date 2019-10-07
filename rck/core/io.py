@@ -629,19 +629,27 @@ def get_vcf_info_string(adjacency, extra_fields, extra_fill=""):
     return ";".join(result)
 
 
-def get_vcf_format_string(adjacency, clone_id, format_fields, extra_fill=""):
+def get_vcf_format_string(adjacency, clone_id, format_fields, extra_fill=".", gt_extra=None, dummy_gt="./."):
     result = []
-    if COPY_NUMBER in adjacency.extra:
-        total_cn = sum([adjacency.extra[COPY_NUMBER][clone_id][ph] for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]])
-        genotype_value = "0/0" if total_cn == 0 else "./."
-    else:
-        genotype_value = "./."
     extra_lower = {key.lower(): value for key, value in adjacency.extra.items()}
+    gt_filled = False
+    if gt_extra is not None:
+        for gt_ex in gt_extra.split(","):
+            if gt_ex.lower() not in extra_lower:
+                continue
+            genotype_value = extra_lower[gt_ex.lower()]
+            gt_filled = True
+            break
+    elif not gt_filled and COPY_NUMBER in adjacency.extra:
+        total_cn = sum([adjacency.extra[COPY_NUMBER][clone_id][ph] for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]])
+        genotype_value = "0/0" if total_cn == 0 else dummy_gt
+    else:
+        genotype_value = dummy_gt
     for entry_id in format_fields:
         if entry_id.lower() == VCF_GENOTYPE.lower():
             value = genotype_value
         elif entry_id.lower() == COPY_NUMBER.lower() and COPY_NUMBER in adjacency.extra:
-            value = ",".join([str(adjacency.extra[COPY_NUMBER][clone_id][ph]) for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]])
+            value = "/".join([str(adjacency.extra[COPY_NUMBER][clone_id][ph]) for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]])
         else:
             value = str(extra_lower.get(entry_id.lower(), extra_fill))
         result.append(value)
@@ -734,7 +742,8 @@ def write_adjacencies_to_vcf_sniffles_file(file_name, adjacencies, extra="all", 
 
 
 def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extra="all", extra_fill=".", sort_adjacencies=True,
-                                                  dummy_clone="dummy_clone", clone_suffix="", alt_extra=None, ref_extra=None):
+                                                  dummy_clone="dummy_clone", clone_suffix="", alt_extra=None, ref_extra=None,
+                                                  dummy_clone_gt_extra=None, dummy_gt="./."):
     if sort_adjacencies:
         adjacencies = sorted(adjacencies, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
     adjacencies = list(adjacencies)
@@ -807,7 +816,7 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
         print(adjacency.position1.chromosome, end="\t", file=destination)  # CHROM
         print(adjacency.position1.coordinate, end="\t", file=destination)  # POS
         print(adjacency.extra.get(EXTERNAL_NA_ID, adjacency.idx), end="\t", file=destination)  # ID
-        ref_extra_list = "" if ref_extra is None else ref_extra.split(",")
+        ref_extra_list = [""] if ref_extra is None else ref_extra.split(",")
         extra = {k.lower(): v for k, v in adjacency.extra.items()}
         for ref_ex in ref_extra_list:
             ref_extra_value = extra.get(ref_ex.lower(), "1")
@@ -818,7 +827,7 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
                 break
         else:
             print("N", end="\t", file=destination)  # REF
-        alt_extra_list = "" if alt_extra is None else alt_extra.split(",")
+        alt_extra_list = [""] if alt_extra is None else alt_extra.split(",")
         for alt_ex in alt_extra_list:
             alt_extra_value = extra.get(alt_ex.lower(), "1")
             if not isinstance(alt_extra_value, list):
@@ -834,7 +843,8 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
         print(":".join(extra_format_fields_and_numbers.keys()), end="\t", file=destination)  # FORMAT
         clones_strings = []
         for clone_id in clone_ids:
-            clones_strings.append(get_vcf_format_string(adjacency=adjacency, clone_id=clone_id, format_fields=sorted(extra_format_fields_and_numbers.keys())))
+            clones_strings.append(get_vcf_format_string(adjacency=adjacency, clone_id=clone_id, format_fields=sorted(extra_format_fields_and_numbers.keys()),
+                                                        gt_extra=dummy_clone_gt_extra, dummy_gt=dummy_gt))
         print("\t".join(clones_strings), file=destination)  # SAMPLES
 
 
