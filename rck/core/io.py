@@ -808,7 +808,7 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
         print(adjacency.position1.coordinate, end="\t", file=destination)  # POS
         print(adjacency.extra.get(EXTERNAL_NA_ID, adjacency.idx), end="\t", file=destination)  # ID
         ref_extra_list = "" if ref_extra is None else ref_extra.split(",")
-        for ref_ex in ref_extra_list.split(","):
+        for ref_ex in ref_extra_list:
             ref_extra_value = adjacency.extra.get(ref_ex, "1")
             if not isinstance(ref_extra_value, list):
                 ref_extra_value = [ref_extra_value]
@@ -818,7 +818,7 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
         else:
             print("N", end="\t", file=destination)  # REF
         alt_extra_list = "" if alt_extra is None else alt_extra.split(",")
-        for alt_ex in alt_extra_list.split(","):
+        for alt_ex in alt_extra_list:
             alt_extra_value = adjacency.extra.get(alt_ex, "1")
             if not isinstance(alt_extra_value, list):
                 alt_extra_value = alt_extra_value.split(",")
