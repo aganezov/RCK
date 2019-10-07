@@ -1151,6 +1151,7 @@ def get_nas_from_breakdancer_source(source, setup=None):
         aid = novel_adjacency.stable_id_non_phased
         result[aid].append(novel_adjacency)
     result = update_nas_ids(nas_by_ids_defaultdict=result, setup=setup)
+    update_adjacencies_svtype(adjacencies=result.values(), prefix="breakdancer")
     return result.values()
 
 
