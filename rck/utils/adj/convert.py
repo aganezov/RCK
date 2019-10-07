@@ -891,7 +891,7 @@ def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None, sil
         extra[EXTERNAL_NA_ID] = svid
         if svtype in ["DEL", "INS", "INV", "BND", "DUP"]:
             for vcf_sample in record.samples:
-                if sample is None or vcf_sample.sample == sample:
+                if sample is None or vcf_sample.sample.lower() == sample.lower():
                     extra["OR_GT"] = "/".join(map(str, vcf_sample.gt_alleles))
                     support, total = 0, 0
                     l, r = vcf_sample.gt_alleles
