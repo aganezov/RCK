@@ -188,15 +188,15 @@ def get_standardize_sv_type(adjacency: Adjacency):
     ###
     # more generic approach if both REF and ALT fields are present in the adjacency data
     ###
-    if "ALT" in adjacency.extra and "REF" in adjacency.extra and adjacency.extra["ALT"].isalpha() and adjacency.extra["REF"].isalpha() and \
+    if "ALT" in adjacency.extra and "REF" in adjacency.extra and all(map(str, adjacency.extra["ALT"].isalpha())) and adjacency.extra["REF"].isalpha() and \
             len(adjacency.extra["ALT"]) > len(adjacency.extra["REF"]):
         return StandardizedSVType.INS
     return StandardizedSVType.DEL
 
 
-def update_adjacencies_svtype(adjacencies, prefix=""):
+def update_adjacencies_svtype(adjacencies):
     for adj in adjacencies:
-        or_key = "_".join([prefix, "OR_SVTYPE"])
+        or_key = "_".join(["OR_SVTYPE"])
         adj.extra[or_key] = adj.extra["SVTYPE"]
         adj.extra["SVTYPE"] = get_standardize_sv_type(adjacency=adj).value
 
@@ -492,7 +492,7 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
     for record in records_by_ids.values():
         extra = deepcopy(record.INFO)
         for vcf_sample in record.samples:
-            extra["Sniffles_OR_GT"] = "/".join(map(str, vcf_sample.gt_alleles))
+            extra["OR_GT"] = "/".join(map(str, vcf_sample.gt_alleles))
         record_id = str(record.ID)
         if record_id in processed_ids:
             continue
@@ -530,7 +530,7 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
         nas_by_ids[record_id].append(na)
         processed_ids.add(record_id)
     nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
-    update_adjacencies_svtype(adjacencies=nas_by_ids.values(), prefix="sniffles")
+    update_adjacencies_svtype(adjacencies=nas_by_ids.values())
     return nas_by_ids.values()
 
 
@@ -595,7 +595,7 @@ def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacenc
         na = Adjacency(position1=pos1, position2=pos2, extra=extra)
         nas_by_ids[record_id].append(na)
     nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
-    update_adjacencies_svtype(adjacencies=nas_by_ids.values(), prefix=survivor_prefix)
+    update_adjacencies_svtype(adjacencies=nas_by_ids.values())
     return nas_by_ids.values()
 
 
@@ -685,7 +685,7 @@ def get_nas_from_svaba_vcf_records(svaba_vcf_records, source_type="sv", setup=No
         else:
             raise ValueError("unknown SvABA input type {source_type}. Only 'sv' or 'indel' are allowed".format(source_type=source_type))
     nas_by_ids = update_nas_ids(nas_by_ids_defaultdict=nas_by_ids, setup=setup)
-    update_adjacencies_svtype(adjacencies=nas_by_ids.values(), prefix="svaba")
+    update_adjacencies_svtype(adjacencies=nas_by_ids.values())
     return nas_by_ids.values()
 
 
@@ -892,7 +892,7 @@ def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None, sil
         if svtype in ["DEL", "INS", "INV", "BND", "DUP"]:
             for vcf_sample in record.samples:
                 if sample is None or vcf_sample.sample == sample:
-                    extra["PBSV_OR_GT"] = "/".join(map(str, vcf_sample.gt_alleles))
+                    extra["OR_GT"] = "/".join(map(str, vcf_sample.gt_alleles))
                     support, total = 0, 0
                     l, r = vcf_sample.gt_alleles
                     if l in ['1', '.']:
@@ -1151,7 +1151,7 @@ def get_nas_from_breakdancer_source(source, setup=None):
         aid = novel_adjacency.stable_id_non_phased
         result[aid].append(novel_adjacency)
     result = update_nas_ids(nas_by_ids_defaultdict=result, setup=setup)
-    update_adjacencies_svtype(adjacencies=result.values(), prefix="breakdancer")
+    update_adjacencies_svtype(adjacencies=result.values())
     return result.values()
 
 
