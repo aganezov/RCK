@@ -401,7 +401,7 @@ def get_nas_from_longranger_vcf_records(longranger_vcf_records, setup=None):
 
 
 def add_record_ref_alt_to_extra(sv_type, record, extra):
-    if sv_type in ["INS", "DEL"] and hasattr(record.ALT[0], "sequence"):
+    if any(stand_svtype.lower() in sv_type.lower() for stand_svtype in ["ins", "del"]) and hasattr(record.ALT[0], "sequence"):
         extra["ALT"] = [alt.sequence for alt in record.ALT]
         if len(record.REF) > 0:
             extra["REF"] = record.REF
