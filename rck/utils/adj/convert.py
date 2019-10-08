@@ -513,10 +513,12 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
             if isinstance(strands, (list, tuple)):
                 strands = strands[0]
         except KeyError:
-            if svtype == "INS":
+            if "ins" in svtype.lower():
                 strands = "+-"
             else:
                 raise ValueError("Unknown strands {missing STRANDS entry}")
+        if "ins" in svtype.lower():
+            coord2 = coord1 + 1
         add_record_ref_alt_to_extra(svtype, record, extra)
         strand1 = Strand.from_pm_string(string=strands[0])
         strand2 = Strand.from_pm_string(string=strands[1])
