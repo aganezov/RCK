@@ -225,7 +225,7 @@ def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude
     exclude_by_chr = dict(exclude_by_chr)
     annotate_retained_extra_field = ANNOTATE_RETAINED_EXTRA_FIELD
     if annotate_retained_extra_field_prefix is not None:
-        annotate_retained_extra_field = annotated_retained_segments_extra_field + annotate_retained_extra_field
+        annotate_retained_extra_field = "_".join([annotate_retained_extra_field_prefix, annotate_retained_extra_field])
     for adj in adjacencies:
         retain = True
         chr1, chr2 = adj.position1.chromosome, adj.position2.chromosome
