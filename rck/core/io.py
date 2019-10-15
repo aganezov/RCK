@@ -638,7 +638,7 @@ def get_vcf_format_string(adjacency, clone_id, format_fields, extra_fill=".", gt
         for gt_ex in gt_extra.split(","):
             if gt_ex.lower() not in extra_lower:
                 continue
-            genotype_value = extra_lower[gt_ex.lower()]
+            genotype_value = extra_lower[gt_ex.lower()].replace("None", ".")
             gt_filled = True
             break
     if not gt_filled and COPY_NUMBER in adjacency.extra:
@@ -649,7 +649,7 @@ def get_vcf_format_string(adjacency, clone_id, format_fields, extra_fill=".", gt
         genotype_value = dummy_gt
     for entry_id in format_fields:
         if entry_id.lower() == VCF_GENOTYPE.lower():
-            value = genotype_value
+            value = genotype_value.repalce("None", ".")
         elif entry_id.lower() == COPY_NUMBER.lower() and COPY_NUMBER in adjacency.extra:
             value = "/".join([str(adjacency.extra[COPY_NUMBER][clone_id][ph]) for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]])
         else:

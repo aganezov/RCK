@@ -500,7 +500,7 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
     for record in records_by_ids.values():
         extra = deepcopy(record.INFO)
         for vcf_sample in record.samples:
-            extra["OR_GT"] = "/".join(map(str, vcf_sample.gt_alleles))
+            extra["OR_GT"] = "/".join(map(str, vcf_sample.gt_alleles)).replace("None", ".")
         record_id = str(record.ID)
         if record_id in processed_ids:
             continue
@@ -902,7 +902,7 @@ def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None, sil
         if svtype in ["DEL", "INS", "INV", "BND", "DUP"]:
             for vcf_sample in record.samples:
                 if sample is None or vcf_sample.sample.lower() == sample.lower():
-                    extra["OR_GT"] = "/".join(map(str, vcf_sample.gt_alleles))
+                    extra["OR_GT"] = "/".join(map(str, vcf_sample.gt_alleles)).replace("None", ".")
                     support, total = 0, 0
                     l, r = vcf_sample.gt_alleles
                     if l in ['1', '.']:
