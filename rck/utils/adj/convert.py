@@ -9,6 +9,8 @@ import vcf
 from rck.core.io import EXTERNAL_NA_ID, SVTYPE, write_adjacencies_to_destination, COPY_NUMBER, parse_segment_extra
 from rck.core.structures import Strand, Position, Adjacency, AdjacencyType, Phasing, Segment
 
+VCF_FILTER = "vcf_filter"
+VCF_FILTER2 = "vcf_filter2"
 STRIP_CHR = "strip_CHR"
 APPEND_ID = "append_id"
 EXTRA_FIELDS = "extra_fields"
@@ -155,6 +157,16 @@ def update_nas_ids(nas_by_ids_defaultdict, setup):
     return result
 
 
+PASS_FILTER_STR = "PASS"
+
+
+def get_string_vcf_filter(record):
+    result = ",".join(map(str, record.FILTER)) if isinstance(record.FILTER, list) else str(record.FILTER)
+    if len(result) == 0:
+        result = PASS_FILTER_STR
+    return result
+
+
 class StandardizedSVType(Enum):
     INS = "INS"
     DEL = "DEL"
@@ -250,6 +262,7 @@ def get_nas_from_lumpy_vcf_records(lumpy_vcf_records, setup=None):
             continue
         sv_type = record.INFO["SVTYPE"]
         extra = {}
+        extra[VCF_FILTER] = get_string_vcf_filter(record=record)
         if sv_type in ["DUP", "DEL", "BND"]:
             if sv_type in ["DUP", "DEL"]:
                 if "_" in str(record.ID):
@@ -273,6 +286,7 @@ def get_nas_from_lumpy_vcf_records(lumpy_vcf_records, setup=None):
                 mate_vcf_entry_id = mate_vcf_entry_id_list[0]
                 mate_record = records_by_ids[mate_vcf_entry_id]
                 extra.update(mate_record.INFO)
+                extra[VCF_FILTER2] = get_string_vcf_filter(record=mate_record)
                 strand1 = get_strand_from_alt_breakend(vcf_recrod=mate_record)
                 strand2 = get_strand_from_alt_breakend(vcf_recrod=record)
                 chr2 = str(mate_record.CHROM)
@@ -291,7 +305,9 @@ def get_nas_from_lumpy_vcf_records(lumpy_vcf_records, setup=None):
             if "_" in str(record.ID):
                 raise Exception("Non standard id {sv_id} for a same-chromosome SV of type {sv_type}".format(sv_id=record.ID, sv_type=sv_type))
             extra1 = deepcopy(record.INFO)
+            extra1[VCF_FILTER] = get_string_vcf_filter(record=record)
             extra2 = deepcopy(record.INFO)
+            extra2[VCF_FILTER] = get_string_vcf_filter(record=record)
             chr11, chr12 = get_inv_na1_chrs_from_vcf_record(vcf_record=record)
             chr21, chr22 = get_inv_na2_chrs_from_vcf_record(vcf_record=record)
             coord11, coord12 = get_inv_na1_coords_from_vcf_record(vcf_record=record)
@@ -335,6 +351,7 @@ def get_nas_from_longranger_vcf_records(longranger_vcf_records, setup=None):
         if sv_id in processed_vcf_ids:
             continue
         extra = deepcopy(record.INFO)
+        extra[VCF_FILTER] = get_string_vcf_filter(record=record)
         sv_type = record.INFO["SVTYPE"]
         if len(sv_id_entries) <= 2:
             mate_present = False
@@ -346,6 +363,7 @@ def get_nas_from_longranger_vcf_records(longranger_vcf_records, setup=None):
             for mate_vcf_id in record.INFO["MATEID"]:
                 mate_record = records_by_ids[mate_vcf_id]
                 extra.update(deepcopy(mate_record.INFO))
+                extra[VCF_FILTER2] = get_string_vcf_filter(record=mate_record)
                 mate_breakend = record.ALT[0]
                 record_breakend = mate_record.ALT[0]
                 chr1 = str(record.CHROM)
@@ -433,6 +451,7 @@ def get_nas_from_manta_vcf_records(manta_vcf_records, setup=None):
     processed_ids = set()
     for record in records_by_ids.values():
         extra = deepcopy(record.INFO)
+        extra[VCF_FILTER] = get_string_vcf_filter(record=record)
         svtype = record.INFO["SVTYPE"]
         record_id = str(record.ID)
         if record_id in processed_ids:
@@ -453,6 +472,7 @@ def get_nas_from_manta_vcf_records(manta_vcf_records, setup=None):
             pos1 = Position(chromosome=chr1, coordinate=coord1, strand=strand1)
             pos2 = Position(chromosome=chr2, coordinate=coord2, strand=strand2)
             extra[EXTERNAL_NA_ID] = str(record.ID)
+            extra[VCF_FILTER2] = get_string_vcf_filter(record=mate_record)
             extra[EXTERNAL_NA_ID2] = mate_vcf_id
             extra = clear_duplicated_entries_extra(extra=extra)
             na = Adjacency(position1=pos1, position2=pos2, extra=extra)
@@ -511,6 +531,7 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
     processed_ids = set()
     for record in records_by_ids.values():
         extra = deepcopy(record.INFO)
+        extra[VCF_FILTER] = get_string_vcf_filter(record=record)
         for vcf_sample in record.samples:
             extra["OR_GT"] = "/".join(map(str, vcf_sample.gt_alleles)).replace("None", ".")
         record_id = str(record.ID)
@@ -629,6 +650,7 @@ def get_nas_from_svaba_vcf_records(svaba_vcf_records, source_type="sv", setup=No
     processed_vcf_ids = set()
     for record in records_by_ids.values():
         extra = deepcopy(record.INFO)
+        extra[VCF_FILTER] = get_string_vcf_filter(record=record)
         if samples is not None:
             present = {}
             for format_sample in record.samples:
@@ -719,6 +741,7 @@ def get_nas_from_grocsv_vcf_records(grocsv_vcf_records, setup=None, samples=None
     processed_ids = set()
     for record in records_by_ids.values():
         extra = deepcopy(record.INFO)
+        extra[VCF_FILTER] = get_string_vcf_filter(record=record)
         record_id = str(record.ID)
         if record_id in processed_ids:
             continue
@@ -804,6 +827,7 @@ def get_nas_from_delly_vcf_records(delly_vcf_records, setup=None):
     records_by_ids = get_vcf_records_by_ids(vcf_records=delly_vcf_records)
     for record in records_by_ids.values():
         extra = deepcopy(record.INFO)
+        extra[VCF_FILTER] = get_string_vcf_filter(record=record)
         svtype = record.INFO["SVTYPE"]
         svid = str(record.ID)
         extra[SVTYPE] = svtype
@@ -910,6 +934,7 @@ def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None, sil
             continue
         svtype = record.INFO["SVTYPE"]
         extra[SVTYPE] = svtype
+        extra[VCF_FILTER] = get_string_vcf_filter(record=record)
         extra[EXTERNAL_NA_ID] = svid
         if svtype in ["DEL", "INS", "INV", "BND", "DUP"]:
             for vcf_sample in record.samples:
