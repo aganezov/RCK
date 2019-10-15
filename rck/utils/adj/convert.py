@@ -189,14 +189,25 @@ def get_standardize_sv_type(adjacency: Adjacency):
     ###
     # more generic approach if both REF and ALT fields are present in the adjacency data
     ###
-    if "alt" in lower_extra and "ref" in lower_extra and all(map(str, lower_extra["alt"].isalpha())) and lower_extra["alt"].isalpha() and \
-            len(lower_extra["alt"]) > len(lower_extra["ref"]):
-        return StandardizedSVType.INS
+    if "alt" in lower_extra and "ref" in lower_extra and all(map(lambda e: str(e).isalpha() and str(e) != "None", lower_extra["alt"])) and lower_extra["ref"].isalpha():
+        if isinstance(lower_extra["alt"], list):
+            alt = lower_extra["alt"][0]
+        else:
+            alt = lower_extra["alt"]
+        if len(alt) > len(lower_extra["ref"]):
+            return StandardizedSVType.INS
+        else:
+            return StandardizedSVType.DEL
     ###
     # last resort based on positive/negative svlen
     ###
-    if SVLEN.lower() in lower_extra and lower_extra[SVLEN.lower()] > 0:
-        return StandardizedSVType.INS
+    if SVLEN.lower() in lower_extra:
+        if isinstance(lower_extra[SVLEN.lower()], list):
+            length = int(lower_extra[SVLEN.lower()][0])
+        else:
+            length = lower_extra[SVLEN.lower()]
+        if length > 0:
+            return StandardizedSVType.INS
     return StandardizedSVType.DEL
 
 
