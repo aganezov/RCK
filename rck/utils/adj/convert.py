@@ -202,11 +202,12 @@ def get_standardize_sv_type(adjacency: Adjacency):
 
 def update_adjacencies_svtype(adjacencies):
     for adj in adjacencies:
-        or_key = "_".join(["OR_SVTYPE"])
-        adj.extra[or_key] = adj.extra.get("SVTYPE", adj.extra.get("svtype", None))
-        if adj.extra[or_key] is None:
-            del adj.extra[or_key]
-        adj.extra["SVTYPE"] = get_standardize_sv_type(adjacency=adj).value
+        adj_lower_extra = {key.lower(): value for key, value in adj.extra.items()}
+        or_key = "or_svtype"
+        if SVTYPE.lower() in adj_lower_extra:
+            adj_lower_extra[or_key] = adj_lower_extra["svtype"]
+        adj_lower_extra[SVTYPE.lower()] = get_standardize_sv_type(adjacency=adj).value
+        adj.extra = adj_lower_extra
 
 
 DUPLICATED_ENTRIES_EXTRA = {
