@@ -174,22 +174,28 @@ def get_standardize_sv_type(adjacency: Adjacency):
     # generic for all callers
     if strands[0] == strands[1]:
         return StandardizedSVType.INV
-    if "OR_SVTYPE" in adjacency.extra:
+    lower_extra = {key.lower(): value for key, value in adjacency.extra.items()}
+    if "or_svtype" in lower_extra:
         ###
         # covers Sniffles, PBSV, Delly, ...
         ###
-        if "ins" in adjacency.extra["OR_SVTYPE"].lower():
+        if "ins" in lower_extra["or_svtype"].lower():
             return StandardizedSVType.INS
         ###
         # covers Sniffles, PBSV, Delly, ...
         ###
-        if "del" in adjacency.extra["OR_SVTYPE"].lower():
+        if "del" in lower_extra["or_svtype"].lower():
             return StandardizedSVType.DEL
     ###
     # more generic approach if both REF and ALT fields are present in the adjacency data
     ###
-    if "ALT" in adjacency.extra and "REF" in adjacency.extra and all(map(str, adjacency.extra["ALT"].isalpha())) and adjacency.extra["REF"].isalpha() and \
-            len(adjacency.extra["ALT"]) > len(adjacency.extra["REF"]):
+    if "alt" in lower_extra and "ref" in lower_extra and all(map(str, lower_extra["alt"].isalpha())) and lower_extra["alt"].isalpha() and \
+            len(lower_extra["alt"]) > len(lower_extra["ref"]):
+        return StandardizedSVType.INS
+    ###
+    # last resort based on positive/negative svlen
+    ###
+    if SVLEN.lower() in lower_extra and lower_extra[SVLEN.lower()] > 0:
         return StandardizedSVType.INS
     return StandardizedSVType.DEL
 
@@ -913,13 +919,21 @@ def get_nas_from_pbsv_vcf_records(pbsv_vcf_records, setup=None, sample=None, sil
                 if setup.get(STRIP_CHR, True):
                     chr1 = strip_chr(chr_string=chr1)
                 chr2 = chr1
+                coord2 = record.INFO["END"]
                 if svtype in ["DEL", "INS"]:
                     strand1 = Strand.FORWARD
                     strand2 = Strand.REVERSE
+                elif "ins" in svid.lower():
+                    strand1 = Strand.FORWARD
+                    strand2 = Strand.REVERSE
+                    coord1 = coord2
+                    coord2 = coord1 + 1
+                    assert len(record.INFO["SVLEN"]) == 1
+                    extra[SVLEN] = int(record.INFO["SVLEN"][0])
+                    del extra["SVLEN"]
                 else:
                     strand1 = Strand.REVERSE
                     strand2 = Strand.FORWARD
-                coord2 = record.INFO["END"]
                 if svtype == "INS" and coord1 == coord2:
                     coord2 += 1
                 if svtype == "INS":
