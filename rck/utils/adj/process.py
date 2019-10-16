@@ -239,18 +239,19 @@ def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude
             chr1in = len(chr1_segments_in) > 0
             chr2in = len(chr2_segments_in) > 0
             if include_both:
-                retain &= chr1in and chr2in
+                retain = chr1in and chr2in
             else:
-                retain &= chr1in or chr2in
+                retain = chr1in or chr2in
             if retain and annotate_retained:
                 annotations_segments.extend(chr1_segments_in)
                 annotations_segments.extend(chr2_segments_in)
-        if include_spanning and chr1 == chr2 and len(include_segments_chr1) != 0:
-            spanned_segments = coordinates_span_segments(coordinate1=adj.position1.coordinate, coordinate2=adj.position2.coordinate, segments=include_segments_chr1, partial=False,
-                                                         short_circ=annotate_short_circ)
-            retain |= len(spanned_segments) > 0
-            if retain and annotate_retained:
-                annotations_segments.extend(spanned_segments)
+            if include_spanning and chr1 == chr2 and len(include_segments_chr1) != 0:
+                spanned_segments = coordinates_span_segments(coordinate1=adj.position1.coordinate, coordinate2=adj.position2.coordinate, segments=include_segments_chr1,
+                                                             partial=False,
+                                                             short_circ=annotate_short_circ)
+                retain |= len(spanned_segments) > 0
+                if retain and annotate_retained:
+                    annotations_segments.extend(spanned_segments)
         elif len(include_by_chr) > 0:
             retain = False
         if not retain:
@@ -261,11 +262,11 @@ def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude
             chr1in = coordinate_in_any_segment(coordinate=adj.position1.coordinate, segments=exclude_segments_chr1)
             chr2in = coordinate_in_any_segment(coordinate=adj.position2.coordinate, segments=exclude_segments_chr2)
             if exclude_both:
-                retain &= not (chr1in and chr2in)
+                retain = not (chr1in and chr2in)
             else:
-                retain &= not (chr1in or chr2in)
-        if exclude_spanning and chr1 == chr2 and len(exclude_segments_chr1) != 0:
-            retain &= not coordinates_span_any_segment(coordinate1=adj.position1.coordinate, coordinate2=adj.position2.coordinate, segments=exclude_segments_chr1, partial=False)
+                retain = not (chr1in or chr2in)
+            if exclude_spanning and chr1 == chr2 and len(exclude_segments_chr1) != 0:
+                retain &= not coordinates_span_any_segment(coordinate1=adj.position1.coordinate, coordinate2=adj.position2.coordinate, segments=exclude_segments_chr1, partial=False)
         if retain:
             if annotate_retained and len(annotations_segments) > 0:
                 annotations = set()
