@@ -245,7 +245,7 @@ def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude
             if retain and annotate_retained:
                 annotations_segments.extend(chr1_segments_in)
                 annotations_segments.extend(chr2_segments_in)
-        elif include_spanning and chr1 == chr2 and len(include_segments_chr1) != 0:
+        if include_spanning and chr1 == chr2 and len(include_segments_chr1) != 0:
             spanned_segments = coordinates_span_segments(coordinate1=adj.position1.coordinate, coordinate2=adj.position2.coordinate, segments=include_segments_chr1, partial=False,
                                                          short_circ=annotate_short_circ)
             retain |= len(spanned_segments) > 0
@@ -264,7 +264,7 @@ def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude
                 retain &= not (chr1in and chr2in)
             else:
                 retain &= not (chr1in or chr2in)
-        elif exclude_spanning and chr1 == chr2 and len(exclude_segments_chr1) != 0:
+        if exclude_spanning and chr1 == chr2 and len(exclude_segments_chr1) != 0:
             retain &= not coordinates_span_any_segment(coordinate1=adj.position1.coordinate, coordinate2=adj.position2.coordinate, segments=exclude_segments_chr1, partial=False)
         if retain:
             if annotate_retained and len(annotations_segments) > 0:
