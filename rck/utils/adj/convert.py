@@ -582,6 +582,11 @@ def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacenc
         setup = {}
     if adjacencies_by_ids_by_sample_name is None:
         adjacencies_by_ids_by_sample_name = {}
+    adjacencies_by_coordinates_by_sample_name = {}
+    for sample, adj_by_ids in adjacencies_by_ids_by_sample_name.items():
+        adjacencies_by_coordinates_by_sample_name[sample] = {}
+        for adj_id, adj in adj_by_ids.items():
+            adjacencies_by_coordinates_by_sample_name[sample][f'{adj.position1.chromosome}_{adj.position1.coordinate}-{adj.position2.chromosome}_{adj.position2.chromosome}'] = adj
     nas_by_ids = defaultdict(list)
     records_by_ids = get_vcf_records_by_ids(vcf_records=survivor_vcf_records)
     for record in records_by_ids.values():
@@ -621,7 +626,16 @@ def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacenc
             source_id = vcf_sample.data.ID.split(",")[0]
             if source_id == "NaN":
                 continue
-            supporting_source_ids.add(source_id)
+            source_ids = set()
+            source_ids.add(source_id)
+            coordinates = vcf_sample.data.CO.split(",")
+            if len(coordinates) > 1:
+                for coordinate_entry in coordinates:
+                    if coordinate_entry in adjacencies_by_coordinates_by_sample_name[vcf_sample.sample]:
+                        adj = adjacencies_by_coordinates_by_sample_name[vcf_sample.sample][coordinate_entry]
+                        source_ids.add(adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased))
+            for source_id in sorted(source_ids):
+                supporting_source_ids.add(source_id)
             if vcf_sample.sample in adjacencies_by_ids_by_sample_name:
                 sample_source_adjacencies = adjacencies_by_ids_by_sample_name[vcf_sample.sample]
                 source_adjacency = sample_source_adjacencies[source_id]
