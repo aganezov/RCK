@@ -586,7 +586,7 @@ def get_nas_from_survivor_vcf_records(survivor_vcf_records, setup=None, adjacenc
     for sample, adj_by_ids in adjacencies_by_ids_by_sample_name.items():
         adjacencies_by_coordinates_by_sample_name[sample] = {}
         for adj_id, adj in adj_by_ids.items():
-            adjacencies_by_coordinates_by_sample_name[sample][f'{adj.position1.chromosome}_{adj.position1.coordinate}-{adj.position2.chromosome}_{adj.position2.chromosome}'] = adj
+            adjacencies_by_coordinates_by_sample_name[sample][f'{adj.position1.chromosome}_{adj.position1.coordinate}-{adj.position2.chromosome}_{adj.position2.coordinate}'] = adj
     nas_by_ids = defaultdict(list)
     records_by_ids = get_vcf_records_by_ids(vcf_records=survivor_vcf_records)
     for record in records_by_ids.values():
