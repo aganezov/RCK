@@ -821,6 +821,7 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
         ref_extra_list = [""] if ref_extra is None else ref_extra.split(",")
         extra = {k.lower(): v for k, v in adjacency.extra.items()}
         for ref_ex in ref_extra_list:
+            # we need the 1 as a placeholder for non-alphanumerical entry, so that we fallback on N only if all ref extra field are missing
             ref_extra_value = extra.get(ref_ex.lower(), "1")
             if ref_extra is not None and not isinstance(ref_extra_value, (list, tuple)) and str(ref_extra_value).isalpha():
                 print(f'{ref_extra_value}', end="\t", file=destination)
