@@ -822,19 +822,19 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
         extra = {k.lower(): v for k, v in adjacency.extra.items()}
         for ref_ex in ref_extra_list:
             ref_extra_value = extra.get(ref_ex.lower(), "1")
-            if not isinstance(ref_extra_value, list):
-                ref_extra_value = [ref_extra_value]
-            if ref_extra is not None and all(map(lambda e: str(e).isalpha(), ref_extra_value)):
-                print(f'{",".join(map(str, ref_extra_value))}', end="\t", file=destination)
+            if ref_extra is not None and not isinstance(ref_extra_value, (list, tuple)) and str(ref_extra_value).isalpha():
+                print(f'{ref_extra_value}', end="\t", file=destination)
                 break
         else:
-            print("N", end="\t", file=destination)  # REF
+            ref_extra_value = "N"
+            print(ref_extra_value, end="\t", file=destination)  # REF
         alt_extra_list = [""] if alt_extra is None else alt_extra.split(",")
         for alt_ex in alt_extra_list:
             alt_extra_value = extra.get(alt_ex.lower(), "1")
             if not isinstance(alt_extra_value, list):
                 alt_extra_value = alt_extra_value.split(",")
-            if alt_extra is not None and all(map(lambda e: str(e).isalpha(), alt_extra_value)):
+            alt_extra_value = [v for v in alt_extra_value if v != ref_extra_value]
+            if alt_extra is not None and len(alt_extra_value) > 0 and all(map(lambda e: str(e).isalpha(), alt_extra_value)):
                 print(f'{",".join(map(str, alt_extra_value))}', end="\t", file=destination)     # ALT if there is sequence available and specified
                 break
         else:
