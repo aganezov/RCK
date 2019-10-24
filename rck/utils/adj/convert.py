@@ -215,9 +215,9 @@ def get_standardize_sv_type(adjacency: Adjacency):
     ###
     if SVLEN.lower() in lower_extra:
         if isinstance(lower_extra[SVLEN.lower()], list):
-            length = int(lower_extra[SVLEN.lower()][0])
+            length = int(float(lower_extra[SVLEN.lower()][0]))
         else:
-            length = lower_extra[SVLEN.lower()]
+            length = int(float(lower_extra[SVLEN.lower()]))
         if length > 0:
             return StandardizedSVType.INS
     return StandardizedSVType.DEL
@@ -229,8 +229,8 @@ def update_adjacencies_svtype(adjacencies):
         or_key = "or_svtype"
         if SVTYPE.lower() in adj_lower_extra:
             adj_lower_extra[or_key] = adj_lower_extra["svtype"]
-        adj_lower_extra[SVTYPE.lower()] = get_standardize_sv_type(adjacency=adj).value
         adj.extra = adj_lower_extra
+        adj.extra[SVTYPE.lower()] = get_standardize_sv_type(adjacency=adj).value
 
 
 DUPLICATED_ENTRIES_EXTRA = {
