@@ -15,7 +15,7 @@ from rck.core.io import read_adjacencies_from_source, write_adjacencies_to_desti
     get_standard_logger_from_args
 from rck.utils.adj.process import get_shared_nas_parser, Merger, iter_over_string_entries_from_source, get_extra_field_regexes, \
     filter_adjacencies_by_extra, \
-    KEEP, REMOVE, refined_adjacencies_reciprocal
+    KEEP, REMOVE, refined_adjacencies_reciprocal, update_adjacencies
 from rck.utils.adj.convert import get_chrs_regions_string_lists_from_source, get_chrs_regions_string_list_from_file, parse_segment_chr_region
 from rck.utils.adj.process import filter_adjacencies_by_chromosomal_regions, filter_adjacencies_by_size, iter_haploid_adjacencies
 
@@ -51,10 +51,6 @@ def main():
     filter_parser.add_argument("--size-extra-field", default="svlen")
     filter_parser.add_argument("--size-extra-field-no-abs", action="store_false", dest="size_extra_field_abs")
     filter_parser.add_argument("--size-extra-seq-field")
-    # filter_parser.add_argument("--merged-field", default="origin_ids")
-    # filter_parser.add_argument("--merged-distinct-origin-min-cnt", type=int, default=-1)
-    # filter_parser.add_argument("--merged-distinct-origin-min-cnt-missing-strategy", choices=[KEEP, REMOVE], default=KEEP)
-    # filter_parser.add_argument("--merged-origin-regex", default=".*_(?P<source>.*)")
     ####
     cat_parser = subparsers.add_parser("cat", parents=[shared_parser, cli_logging_parser], help="Concatenate Adjacencies in input files (NOTE: different from \"merge\")")
     cat_parser.add_argument("rck_adj", type=argparse.FileType("rt"), nargs="+", default=[sys.stdin])
@@ -68,20 +64,19 @@ def main():
     haploid_parser = subparsers.add_parser("haploid", parents=[shared_parser, cli_logging_parser], help="collapse any info that is allele/haplotype-specific into a haploid mode")
     haploid_parser.add_argument("rck_adj", type=argparse.FileType("rt"), nargs="+", default=[sys.stdin])
     ####
-    # survivor_stat_parser = subparsers.add_parser("survivor_stat", parents=[shared_parser, cli_logging_parser])
-    # survivor_stat_parser.add_argument("rck_adj", type=argparse.FileType("rt"), nargs="+", default=[sys.stdin])
-    # survivor_stat_parser.add_argument("--max-distance", type=int, default=500)
-    # survivor_stat_parser.add_argument("--enforce-sv-types", action="store_true", dest="enforce_sv_types", usage=argparse.SUPPRESS)
-    # survivor_stat_parser.add_argument("--merged-field", default="origin_ids")
-    # survivor_stat_parser.add_argument("--merged-id-template", default="{cnt}_merged")
-    ####
-    # test_merge = subparsers.add_parser("test-merge", parents=[shared_parser, cli_logging_parser], usage=argparse.SUPPRESS)
-    # test_merge.add_argument("sources", type=argparse.FileType("rt"), nargs="+")
-    # test_merge.add_argument("--merged", type=argparse.FileType("rt"), required=True)
-    # test_merge.add_argument("--max-distance", default=500)
-    # test_merge.add_argument("--merged-field", default="origin_ids")
-    # test_merge.add_argument("--origin-sep", default=",")
-    # test_merge.add_argument("--origin-regex", default=".*_(?P<source>.*)")
+    update_parser = subparsers.add_parser("update", parents=[shared_parser, cli_logging_parser],
+                                          help="Updates adjacencies in the 'adj' with the info from --source based on aid matches. Outputs updated --target entries")
+    update_parser.add_argument("rck_adj", type=argparse.FileType("rt"))
+    update_parser.add_argument("--source", type=argparse.FileType("rt"), required=True)
+    update_parser.add_argument("--exclude-extra-fields", default="")
+    update_parser.add_argument("--include-extra-fields", default="")
+    update_parser.add_argument("--no-include-missing", action="store_false", dest="include_missing")
+    update_parser.add_argument("--no-coords-update", action="store_false", dest="coord_update")
+    update_parser.add_argument("--no-coord1-update", action="store_false", dest="coord1_update")
+    update_parser.add_argument("--no-coord2-update", action="store_false", dest="coord2_update")
+    update_parser.add_argument("--no-strands-update", action="store_false", dest="strands_update")
+    update_parser.add_argument("--no-strand1-update", action="store_false", dest="strand1_update")
+    update_parser.add_argument("--no-strand2-update", action="store_false", dest="strand2_update")
     args = parser.parse_args()
     logger = get_standard_logger_from_args(args=args, program_name="RCK-UTILS-ADK-process")
     processed_adjacencies = []
@@ -91,41 +86,7 @@ def main():
         extra = args.o_extra_fields.split(",")
     else:
         extra = args.o_extra_fields
-    if args.command == "merge":
-        all_adjacencies = []
-        for rck_adj_source in args.rck_adj:
-            all_adjacencies.extend(read_adjacencies_from_source(source=rck_adj_source))
-        merger = Merger(origin_ids_field=args.merged_field)
-        for na in all_adjacencies:
-            merger.add_adjacency(adjacency=na, max_distance=args.max_distance)
-        processed_adjacencies = merger.get_merged_adjacencies(merged_template=args.merged_id_template)
-    elif args.command == "test-merge":
-        source_adjacencies = []
-        for rck_adj_source in args.sources:
-            source_adjacencies.extend(read_adjacencies_from_source(source=rck_adj_source))
-        merged_nas = read_adjacencies_from_source(source=args.merged)
-        source_nas_by_ids = {adj.extra.get(EXTERNAL_NA_ID, adj.idx): adj for adj in source_adjacencies}
-        logger.info("Total number of merged nas :: {mlen}".format(mlen=len(merged_nas)))
-        logger.info("Total number of source nas :: {slen}".format(slen=len(source_adjacencies)))
-        source_nas_groups = defaultdict(list)
-        cnt = 0
-        for merged_na in merged_nas:
-            if args.merged_field not in merged_na.extra:
-                logger.info("no source ids field {{{field}}} in merged_na {naid}".format(field=args.merged_field, naid=merged_na.extra.get(EXTERNAL_NA_ID, merged_na.idx)))
-                continue
-            source_ids = merged_na.extra[args.merged_field].split(args.origin_sep)
-            for source_id in source_ids:
-                source_nas_groups[source_id].append(merged_na.extra.get(EXTERNAL_NA_ID, merged_na.idx))
-            for ona1_id, ona2_id in itertools.combinations(source_ids, 2):
-                ona1 = source_nas_by_ids[ona1_id]
-                ona2 = source_nas_by_ids[ona2_id]
-                if not Merger.adjacencies_mergeable(adjacency1=ona1, adjacency2=ona2, max_distance=args.max_distance):
-                    cnt += 1
-        logger.info("Non mergable pairs cnt :: {cnt}".format(cnt=cnt))
-        for source_id, groups in source_nas_groups.items():
-            if len(groups) > 1:
-                logger.info("source na id {source_id} is present in several merged adjacencies {merged_ids}".format(source_id=source_id, merged_ids=str(groups)))
-    elif args.command == "cat":
+    if args.command == "cat":
         adjacencies = itertools.chain(*(stream_adjacencies_from_source(source=rck_adj_source) for rck_adj_source in args.rck_adj))
         if args.enforce_unique_ids:
             processed_ids = set()
@@ -195,6 +156,15 @@ def main():
         haploid_adjacencies = iter_haploid_adjacencies(adjacencies=adjacencies, copy=False)
         write_adjacencies_to_destination(destination=args.rck_adj_file, adjacencies=haploid_adjacencies, sort_adjacencies=False, extra=extra)
         exit(0)
+    elif args.command == "update":
+        adjacencies = read_adjacencies_from_source(source=args.rck_adj)
+        source_adjacencies = read_adjacencies_from_source(source=args.source)
+        extra_include = {v for v in args.include_extra_fields.split(",") if len(v) > 0}
+        extra_exclude = {v for v in args.exclude_extra_fields.split(",") if len(v) > 0}
+        processed_adjacencies = update_adjacencies(target_adjacencies=adjacencies, source_adjacencies=source_adjacencies,
+                                                   update_coords=args.update_coords, update_coord1=args.update_coord1, update_coord2=args.update_coord2,
+                                                   update_strands=args.update_strands, update_strand1=args.update_strand1, update_strand2=args.update_strand2,
+                                                   extra_exclude=extra_exclude, extra_include=extra_include, include_missing=args.include_missing)
     if len(processed_adjacencies) > 0:
         write_adjacencies_to_destination(destination=args.rck_adj_file, adjacencies=processed_adjacencies, extra=extra, sort_adjacencies=args.sort)
 

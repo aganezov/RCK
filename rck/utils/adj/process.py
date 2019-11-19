@@ -266,7 +266,8 @@ def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude
             else:
                 retain = not (chr1in or chr2in)
             if exclude_spanning and chr1 == chr2 and len(exclude_segments_chr1) != 0:
-                retain &= not coordinates_span_any_segment(coordinate1=adj.position1.coordinate, coordinate2=adj.position2.coordinate, segments=exclude_segments_chr1, partial=False)
+                retain &= not coordinates_span_any_segment(coordinate1=adj.position1.coordinate, coordinate2=adj.position2.coordinate, segments=exclude_segments_chr1,
+                                                           partial=False)
         if retain:
             if annotate_retained and len(annotations_segments) > 0:
                 annotations = set()
@@ -678,3 +679,44 @@ def get_circa_adj_cnt(adjacencies, window_size=10000000, chr_sizes=None, element
             else:  # after window
                 current_window = next(chr_windows, None)
     return result
+
+
+def update_adjacencies(target_adjacencies, source_adjacencies,
+                       update_coords=True, update_coord1=True, update_coord2=True,
+                       update_strands=True, update_strand1=True, update_strand2=True,
+                       extra_exclude=None, extra_include=None, include_missing=True):
+    if extra_exclude is None:
+        extra_exclude = set()
+    if extra_include is None:
+        extra_include = set()
+    source_adjacencies_by_aids = {adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased): adj for adj in source_adjacencies}
+    for adj in target_adjacencies:
+        source_adj: Adjacency = source_adjacencies_by_aids.get(adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased), None)
+        if source_adj is None:
+            yield adj
+        if update_coords:
+            if update_coord1:
+                adj.position1.coordinate = source_adj.position1.coordinate
+            if update_coord2:
+                adj.position2.coordinate = source_adj.position2.coordinate
+        if update_strands:
+            if update_strand1:
+                adj.position1.strand = source_adj.position1.strand
+            if update_strand2:
+                adj.position2.strand = source_adj.position2.strand
+        if len(extra_exclude) == 1 and list(extra_exclude)[0] == "all":
+            yield adj
+        updated_extra = deepcopy(adj.extra)
+        for key in adj.extra.keys():
+            if key in extra_exclude:
+                continue
+            if len(extra_include) > 0 and key not in extra_include:
+                continue
+            updated_extra[key] = source_adj.extra.get(key, updated_extra[key])
+        if include_missing:
+            for key, value in source_adj.extra.items():
+                if key in updated_extra:
+                    continue
+                updated_extra[key] = value
+        adj.extra = updated_extra
+        yield adj
