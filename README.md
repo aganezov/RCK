@@ -103,6 +103,8 @@ We currently support converting the output of the following 3rd-party SV detecti
 * *long reads*
     * **Sniffles** [[paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5990442/) | [code](https://github.com/fritzsedlazeck/Sniffles)]
     * **PBSV** [paper | [code](https://github.com/PacificBiosciences/pbsv)]
+* *generic*
+    * **SURVIVOR** [[paper](https://www.nature.com/articles/ncomms14061) | [code](https://github.com/fritzsedlazeck/SURVIVOR)]
 
 For more information about adjacencies, formats, converting, reciprocality, etc, please refer to [adjacencies documentation](docs/Adjacencies.md)      
 
