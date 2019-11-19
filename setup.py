@@ -15,7 +15,7 @@ setup(
     description="A tool for (R)econstruction of (C)ancer (K)aryotypes (both clone- and haplotype-specific)",
     license="MIT",
     keywords="RCK, rck, cancer, cancer genomics, cancer karyotypes, clonality, subclonality, copy number aberrations, breakpoints, structural variations, novel adjacencies",
-    url="",
+    url="https://github.com/aganezov/rck",
     packages=["", "rck", "rck.core", "rck.utils", "rck.utils.scn", "rck.utils.adj"],
     include_package_data=True,
     entry_points={
