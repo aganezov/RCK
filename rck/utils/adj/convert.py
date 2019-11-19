@@ -542,7 +542,36 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
         coord1 = int(record.POS)
         if "CHR2" in record.INFO:
             chr2 = record.INFO["CHR2"]
-            coord2 = int(record.INFO["END"])
+            coord2 = int(record.INFO["END"]) if "END" in record.INFO else None
+            if coord2 is None:
+                if "SVLEN" in extra:
+                    svlen = int(extra["SVLEN"])
+                elif len(record.REF) > 0 and hasattr(record.ALT[0], "sequence"):
+                    ref_len = len(record.REF)
+                    alt_len = len(record.ALT[0].sequence)
+                    if ref_len == 1:
+                        svlen = alt_len
+                    else:
+                        svlen = ref_len
+                else:
+                    raise ValueError(f"Error while processing SV with id {record_id}. No indication of SVLEN nor LAT/REF sequences")
+                coord2 = coord1 + abs(svlen)
+        elif "ins" in svtype.lower() or "del" in svtype.lower():
+            chr2 = chr1
+            coord2 = int(record.INFO["END"]) if "END" in record.INFO else None
+            if coord2 is None:
+                if "SVLEN" in extra:
+                    svlen = int(extra["SVLEN"])
+                elif len(record.REF) > 0 and hasattr(record.ALT[0], "sequence"):
+                    ref_len = len(record.REF)
+                    alt_len = len(record.ALT[0].sequence)
+                    if ref_len == 1:
+                        svlen = alt_len
+                    else:
+                        svlen = ref_len
+                else:
+                    raise ValueError(f"Error while processing SV with id {record_id}. No indication of SVLEN nor LAT/REF sequences")
+                coord2 = coord1 + abs(svlen)
         else:
             record_breakend = record.ALT[0]
             chr2 = record_breakend.chr
@@ -552,7 +581,7 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
             if isinstance(strands, (list, tuple)):
                 strands = strands[0]
         except KeyError:
-            if "ins" in svtype.lower():
+            if "ins" in svtype.lower() or "del" in svtype.lower():
                 strands = "+-"
             else:
                 raise ValueError("Unknown strands {missing STRANDS entry}")
