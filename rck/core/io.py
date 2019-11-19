@@ -615,10 +615,14 @@ def is_format_extra_entry(entry):
 
 def get_vcf_info_string(adjacency, extra_fields, extra_fill=""):
     result = []
-    result.append("CHR2={chromosome}".format(chromosome=adjacency.position2.chromosome))
-    result.append("END={coordinate}".format(coordinate=adjacency.position2.coordinate))
-    result.append("STRANDS={s1}{s2}".format(s1=str(adjacency.position1.strand), s2=str(adjacency.position2.strand)))
     extra_lower = {key.lower(): value for key, value in adjacency.extra.items() if key.upper() not in {"CHR2", "END", "STRANDS"}}
+    if "svtype" in extra_lower and "ins" in extra_lower["svtype"].lower():
+        coord2 = adjacency.position1.coordinate
+    else:
+        coord2 = adjacency.position2.coordinate
+    result.append("CHR2={chromosome}".format(chromosome=adjacency.position2.chromosome))
+    result.append("END={coordinate}".format(coordinate=coord2))
+    result.append("STRANDS={s1}{s2}".format(s1=str(adjacency.position1.strand), s2=str(adjacency.position2.strand)))
     for key in extra_fields:
         if key.upper() in {"CHR2", "END", "STRANDS"}:
             continue
