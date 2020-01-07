@@ -820,7 +820,7 @@ class SCNBoundariesStrategies(Enum):
         if string_value == "fix":
             return cls.FIXED
         elif string_value == "uniform-spread":
-            return cls.UNIFORM_SPREADя
+            return cls.UNIFORM_SPREAD
         elif string_value == "length-spread":
             return cls.LENGTH_SPREAD
         elif string_value == "uniform-min-max":
