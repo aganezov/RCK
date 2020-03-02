@@ -36,11 +36,16 @@ setup(
             "rck-input-refine = rck.utils.rck_input_refine:main",
             "rck-kar-graph = rck.utils.karyotype.rck_kar_graph:main",
             "rck-kar-stats = rck.utils.karyotype.rck_kar_stats:main",
+            "rck-sim = rck.utils.sim.rck_sim:main",
+            "rck-sim-utils = rck.utils.sim.rck_sim_utils:main",
         ]
     },
     install_requires=[
         "networkx>=2",
         "scipy",
+        "numpy",
+        "biopython",
+        "pyyaml",
         "pyvcf",
         "pysam",
         "sortedcontainers",

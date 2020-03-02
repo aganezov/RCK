@@ -106,7 +106,7 @@ def main():
     survivor_stat_parser.add_argument("--separator", default="\t")
     survivor_stat_parser.add_argument("--extra-separator", default=";")
     survivor_stat_parser.add_argument("--sources-field", default="supporting_sources")
-    survivor_stat_parser.add_argument("--size-bins", type=str, default="1,100,200,300,400,500,750,1000,2000,5000,10000,50000,100000,500000")
+    survivor_stat_parser.add_argument("--size-bins", type=str, default="1,50,100,200,300,400,500,750,1000,2000,5000,10000,50000,100000,500000")
     survivor_stat_parser.add_argument("--size-extra-field", default="svlen")
     survivor_stat_parser.add_argument("--size-extra-field-no-abs", action="store_false", dest="size_extra_field_abs")
     survivor_stat_parser.add_argument("--size-extra-seq-field")

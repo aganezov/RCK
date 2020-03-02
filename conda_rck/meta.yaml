@@ -17,6 +17,7 @@ requirements:
   host:
     - networkx >=2
     - scipy
+    - biopython
     - pyvcf
     - pysam
     - sortedcontainers
@@ -28,6 +29,7 @@ requirements:
   run:
     - networkx >=2
     - scipy
+    - biopython
     - pyvcf
     - pysam
     - sortedcontainers

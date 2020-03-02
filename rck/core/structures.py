@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from typing import List, Optional, Union, Iterable, Iterator, Dict, Set
+
 import numpy as np
 import math
 from collections import defaultdict
@@ -85,6 +87,11 @@ class Position(object):
         if self._idx is None:
             return str(self)
         return self._idx
+
+    def non_hap_eq(self, other: "Position") -> bool:
+        if not isinstance(other, Position):
+            return False
+        return self.chromosome == other.chromosome and self.coordinate == other.coordinate and self.strand == other.strand
 
     def __lt__(self, other):
         if not isinstance(other, Position):
@@ -438,19 +445,19 @@ class Segment(object):
 
     @property
     def length(self):
-        return int(self.end_position.coordinate - self.start_position.coordinate + 1)
+        return abs(int(self.end_position.coordinate - self.start_position.coordinate)) + 1
 
     @property
     def length_1000(self):
-        return int(math.ceil(int(self.end_position.coordinate - self.start_position.coordinate) / 1000.0))
+        return int(math.ceil(self.length / 1000.0))
 
     @property
     def length_100(self):
-        return int(math.ceil(int(self.end_position.coordinate - self.start_position.coordinate) / 100.0))
+        return int(math.ceil(self.length / 100.0))
 
     @property
     def length_10(self):
-        return int(math.ceil(int(self.end_position.coordinate - self.start_position.coordinate) / 10.0))
+        return int(math.ceil(self.length / 10.0))
 
     @property
     def start_coordinate(self):
@@ -459,6 +466,15 @@ class Segment(object):
     @property
     def end_coordinate(self):
         return self.end_position.coordinate
+
+    def has_position_inside(self, position: Position) -> bool:
+        start = min((self.start_coordinate, self.end_coordinate))
+        end = max((self.start_coordinate, self.end_coordinate))
+        return start <= position.coordinate <= end
+
+
+class InsertedSeq(Segment):
+    pass
 
 
 class AdjacencyType(Enum):
@@ -474,17 +490,17 @@ class AdjacencyType(Enum):
 
 
 class Adjacency(object):
-    def __init__(self, position1, position2, adjacency_type=AdjacencyType.NOVEL, idx=None, extra=None):
+    def __init__(self, position1: Position, position2: Position, adjacency_type: AdjacencyType = AdjacencyType.NOVEL, idx: Optional[str] = None, extra: Optional[dict] = None):
 
         if position1 <= position2:
-            self.position1 = position1
-            self.position2 = position2
+            self.position1: Position = position1
+            self.position2: Position = position2
         else:
-            self.position1 = position2
-            self.position2 = position1
-        self._idx = idx
-        self.extra = extra if extra is not None else {}
-        self.adjacency_type = adjacency_type
+            self.position1: Position = position2
+            self.position2: Position = position1
+        self._idx: str = idx
+        self.extra: dict = extra if extra is not None else {}
+        self.adjacency_type: AdjacencyType = adjacency_type
 
     @property
     def idx(self):
@@ -509,7 +525,7 @@ class Adjacency(object):
                "".format(p1=repr(self.position1), p2=repr(self.position2), idx=self._idx)
 
     def __str__(self):
-        return "[{p1}]-[{p2}]".format(p1=str(self.position1), p2=str(self.position2))
+        return "[{p1}]-[{p2}]{at}".format(p1=str(self.position1), p2=str(self.position2), at=str(self.adjacency_type.value))
 
     @property
     def is_sorted_non_phased(self):
@@ -607,6 +623,218 @@ class Adjacency(object):
         return abs(self.position1.coordinate - self.position2.coordinate)
 
 
+def positions_adjacent_in_reference(p1: Position, p2: Position, ref_adjacencies: Optional[Set[Adjacency]] = None) -> bool:
+    if ref_adjacencies is not None:
+        if Adjacency(p1, p2) in ref_adjacencies or Adjacency(p2, p1) in ref_adjacencies:
+            return True
+        return False
+    p1_hap_spec, p2_hap_spec = p1.is_haplotype_specific, p2.is_haplotype_specific
+    if p1_hap_spec != p2_hap_spec:
+        return False
+    if all([p1_hap_spec, p2_hap_spec]):
+        # both are haplotype-specific
+        if p1.haplotype != p2.haplotype:
+            return False
+    p1, p2 = sorted([p1, p2])
+    return p1.strand == Strand.FORWARD and p2.strand.REVERSE and (p2.coordinate - p1.coordinate) == 1
+
+
+class ChromosomeType(Enum):
+    LINEAR = "$"
+    CIRCULAR = "@"
+
+    def __str__(self):
+        if self.value == self.LINEAR.value:
+            return "$"
+        return "@"
+
+    @classmethod
+    def from_str(cls, string):
+        if string not in ["$", "@"]:
+            raise ValueError("Chromosome type string has to be either \"$\" or \"@\". \"{v}\" was supplied".format(v=string))
+        return cls.LINEAR if string == "$" else cls.CIRCULAR
+
+
+class Chromosome(object):
+    def __init__(self, chr_name: str, segments: Iterable[Segment], chr_type: ChromosomeType = ChromosomeType.LINEAR):
+        self.name: str = chr_name
+        self.chr_type: ChromosomeType = chr_type
+        self.segments: List[Segment] = list(segments)
+
+    def __str__(self) -> str:
+        return f"{self.name}={','.join(map(str, self.segments))}{str(self.chr_type)}"
+
+    @classmethod
+    def from_str(cls, string: str, ins_seq_prefix: Optional[str] = None) -> "Chromosome":
+        """
+        example:
+            1_1=1:A:1-10000000,2:A:150000-250000,1:1000000-2000000$
+            2_1=1:A:1-10000000,2:A:150000-250000,1:1000000-2000000$
+        """
+        string = string.strip()
+        if string[-1] not in ["$", "@"]:
+            raise ValueError(f"Chromosome string has to end with either $ (linear) or 2 (circular). Supplied string {string} does not.")
+        chr_type = ChromosomeType.from_str(string[-1])
+        string = string[:-1]
+        chr_name, segments_str = string.split("=")
+        if len(chr_name) == 0:
+            raise ValueError(f"Chromosome string has to have a chromosome name at the start, followed by the = sign. Supplied string {string} does not.")
+        segments: List[Union[Segment, InsertedSeq]] = []
+        for segment_str in segments_str.split(","):
+            if ins_seq_prefix is not None and segment_str.startswith(ins_seq_prefix):
+                segments.append(InsertedSeq.from_string(segment_str))
+            else:
+                segments.append(Segment.from_string(segment_str))
+        return cls(chr_name, segments, chr_type)
+
+    @property
+    def length(self) -> int:
+        return sum(s.length for s in self.segments)
+
+    def iter_adjacencies(self, ref_adjacencies: Optional[Set[Adjacency]] = None) -> Iterable[Adjacency]:
+        if len(self.segments) < 2:
+            raise StopIteration()
+        segments_iter = iter(self.segments)
+        ls = next(segments_iter, None)
+        # getting the first non-insertion sequence
+        while ls is not None and isinstance(ls, InsertedSeq):
+            ls = next(segments_iter, None)
+        rs = next(segments_iter, None)
+        through_insertion = False
+        while ls is not None and rs is not None:
+            # ls (left segment) is always a non-inserted sequence
+            if isinstance(rs, InsertedSeq):
+                through_insertion = True
+                rs = next(segments_iter, None)
+                continue
+            assert not isinstance(ls, InsertedSeq)  # sanity check
+            assert not isinstance(rs, InsertedSeq)  # sanity check
+            ls_extremity = ls.end_position
+            rs_extremity = rs.start_position
+            adj_type = AdjacencyType.REFERENCE if positions_adjacent_in_reference(ls_extremity, rs_extremity) else AdjacencyType.NOVEL
+            if adj_type is not None and through_insertion:
+                adj_type = AdjacencyType.NOVEL
+            yield Adjacency(position1=ls_extremity, position2=rs_extremity, adjacency_type=adj_type)
+            ls = rs
+            rs = next(segments_iter, None)
+            through_insertion = False
+        if self.chr_type == ChromosomeType.CIRCULAR:
+            adj_type = AdjacencyType.REFERENCE if positions_adjacent_in_reference(p1=self.segments[0].start_position,
+                                                                                  p2=self.segments[-1].end_position,
+                                                                                  ref_adjacencies=ref_adjacencies) else AdjacencyType.NOVEL
+            yield Adjacency(position1=self.segments[0].start_position, position2=self.segments[-1].end_position, adjacency_type=adj_type)
+
+    def iter_novel_adjacencies(self) -> Iterator[Adjacency]:
+        for adj in self.iter_adjacencies():
+            if adj.adjacency_type == AdjacencyType.NOVEL:
+                yield adj
+
+    def iter_ref_adjacencies(self) -> Iterator[Adjacency]:
+        for adj in self.iter_adjacencies():
+            if adj.adjacency_type == AdjacencyType.REFERENCE:
+                yield adj
+
+    def iter_segments(self, allow_ins: bool = False, ins_prefix: str = "INS") -> Iterator[Segment]:
+        for segment in self.segments:
+            if not allow_ins and segment.chromosome.startswith(ins_prefix):
+                continue
+            yield segment
+
+    def iter_telomeres(self) -> Iterator[Position]:
+        if self.chr_type == ChromosomeType.LINEAR:
+            yield self.segments[0].start_position
+            yield self.segments[-1].end_position
+
+
+class Genome(object):
+    def __init__(self, chromosomes: Iterable[Chromosome]):
+        self.chromosomes: Dict[str, Chromosome] = {c.name: c for c in chromosomes}
+
+    def __str__(self) -> str:
+        result = [str(c) for c in self.chromosomes.values()]
+        return "\n".join(result)
+
+    @classmethod
+    def from_strs(cls, strings: Iterable[str]) -> "Genome":
+        chromosomes = [Chromosome.from_str(s) for s in strings]
+        return cls(chromosomes)
+
+    @classmethod
+    def from_file(cls, file_name: str) -> "Genome":
+        with open(file_name, "rt") as source:
+            return cls.from_strs(source)
+
+    @property
+    def length(self) -> int:
+        return sum(chromosome.length for chromosome in self.chromosomes.values())
+
+    def iter_segments(self, allow_ins: bool = False, ins_prefix: str = "INS") -> Iterable[Segment]:
+        for chromosome in self.chromosomes.values():
+            for segment in chromosome.iter_segments(allow_ins=allow_ins, ins_prefix=ins_prefix):
+                yield segment
+
+    def iter_adjacencies(self, ref_adjacencies: Optional[Set[Adjacency]] = None) -> Iterator[Adjacency]:
+        for chromosome in self.chromosomes.values():
+            for adj in chromosome.iter_adjacencies(ref_adjacencies):
+                yield adj
+
+    def iter_telomeres(self) -> Iterator[Position]:
+        for chromosome in self.chromosomes.values():
+            for telomere in chromosome.iter_telomeres():
+                yield telomere
+
+    def iter_positions(self) -> Iterator[Position]:
+        for segment in self.iter_segments():
+            yield segment.start_position
+            yield segment.end_position
+
+    def propagate_hap_labeles_to_positions(self):
+        for chromosome in self.chromosomes.values():
+            for segment in chromosome.iter_segments():
+                if segment.is_haplotype_specific:
+                    segment.start_position.extra[HAPLOTYPE] = segment.haplotype
+                    segment.end_position.extra[HAPLOTYPE] = segment.haplotype
+
+
+# class Genome(list):
+#     """Just a standard list of chromosomes (i.e., lists) with possibility for extended functionality"""
+#
+#     def iter_segments(self):
+#         for chromosome in self:
+#             for segment in chromosome:
+#                 yield segment
+#
+#     def iter_adjacencies(self, adjacency_type=AdjacencyType.NOVEL,
+#                          inherit_phasing_from_positions=True):
+#         for chromosome in self:
+#             for adjacency in chromosome.iter_adjacencies(adjacency_type=adjacency_type,
+#                                                          inherit_phasing_from_positions=inherit_phasing_from_positions):
+#                 yield adjacency
+#
+#     def __add__(self, other):
+#         return self.__class__(list.__add__(self, other))
+#
+#     def __mul__(self, other):
+#         return self.__class__(list.__mul__(self, other))
+#
+#     def __getitem__(self, item):
+#         result = list.__getitem__(self, item)
+#         if isinstance(result, Chromosome):
+#             return result
+#         try:
+#             return self.__class__(result)
+#         except TypeError:
+#             return result
+#
+#     def iter_telomeres(self):
+#         for chromosome in self:
+#             ss, es = chromosome[0], chromosome[-1]
+#             lt = ss.start_position
+#             rt = es.end_position
+#             yield lt
+#             yield rt
+
+
 class SegmentCopyNumberProfile(object):
 
     def __init__(self):
@@ -668,9 +896,11 @@ class SegmentCopyNumberProfile(object):
         return self.has_record(sid=segment.stable_id_non_hap, haplotype=haplotype)
 
     @classmethod
-    def from_genome(cls, genome, default_haplotype=Haplotype.A):
+    def from_genome(cls, genome: Genome, default_haplotype: Haplotype = Haplotype.A, include_insertions: bool = False, ins_prefix: str = "INS"):
         result = cls()
         for segment in genome.iter_segments():
+            if not include_insertions and segment.chromosome.startswith(ins_prefix):
+                continue
             haplotype = segment.get_haplotype(default=default_haplotype)
             current_value = result.get_hap_aware_cn_by_seg_and_hap(segment=segment, haplotype=haplotype, default=0)
             result.set_cn_record_for_segment(segment=segment, cn=current_value + 1, haplotype=haplotype)
@@ -761,7 +991,7 @@ class AdjacencyCopyNumberProfile(object):
         return self.has_record(aid=aid, phasing=phasing)
 
     @classmethod
-    def from_genome(cls, genome, default_phasing=Phasing.AA):
+    def from_genome(cls, genome: Genome, default_phasing: Phasing = Phasing.AA):
         result = cls()
         for adjacency in genome.iter_adjacencies():
             phasing = adjacency.get_phasing(sort=False, default=default_phasing)
@@ -801,12 +1031,12 @@ class StructureProfile(object):
         self.scn_profile = scn_profile
         self.acn_profile = acn_profile
 
-    @classmethod
-    def from_genome(cls, genome, default_haplotype=Haplotype.A, default_phasing=Phasing.AA):
-        result = cls()
-        result.scn_profile = SegmentCopyNumberProfile.from_genome(genome=genome, default_haplotype=default_haplotype)
-        result.acn_profile = AdjacencyCopyNumberProfile.from_genome(genome=genome, default_phasing=default_phasing)
-        return result
+    # @classmethod
+    # def from_genome(cls, genome, default_haplotype=Haplotype.A, default_phasing=Phasing.AA):
+    #     result = cls()
+    #     result.scn_profile = SegmentCopyNumberProfile.from_genome(genome=genome, default_haplotype=default_haplotype)
+    #     result.acn_profile = AdjacencyCopyNumberProfile.from_genome(genome=genome, default_phasing=default_phasing)
+    #     return result
 
 
 class SCNBoundariesStrategies(Enum):
@@ -895,74 +1125,35 @@ class SegmentCopyNumberBoundaries(object):
                         self.set_cnb_record(sid=sid, hap=haplotype, boundary_type=boundary_type, value=boundary)
 
 
-class Chromosome(list):
-    """just a standard list of segments with a possibility for extended functionality later on"""
-
-    def iter_adjacencies(self, adjacency_type=AdjacencyType.NOVEL, inherit_phasing_from_positions=True):
-        lsg, rsg = itertools.tee(self)
-        next(rsg, None)
-        for ls, rs in zip(lsg, rsg):
-            p1, p2 = ls.end_position, rs.start_position
-            result = Adjacency(position1=p1, position2=p2, adjacency_type=adjacency_type)
-            if inherit_phasing_from_positions and p1.is_haplotype_specific and p2.is_haplotype_specific:
-                if p1 > p2:
-                    phasing = haplotype_pair_to_phasing(h1=p2.haplotype, h2=p1.haplotype)
-                else:
-                    phasing = haplotype_pair_to_phasing(h1=p1.haplotype, h2=p2.haplotype)
-                result.extra[PHASING] = phasing
-            yield result
-
-    def __add__(self, other):
-        return self.__class__(list.__add__(self, other))
-
-    def __mul__(self, other):
-        return self.__class__(list.__mul__(self, other))
-
-    def __getitem__(self, item):
-        result = list.__getitem__(self, item)
-        try:
-            return self.__class__(result)
-        except TypeError:
-            return result
-
-
-class Genome(list):
-    """Just a standard list of chromosomes (i.e., lists) with possibility for extended functionality"""
-
-    def iter_segments(self):
-        for chromosome in self:
-            for segment in chromosome:
-                yield segment
-
-    def iter_adjacencies(self, adjacency_type=AdjacencyType.NOVEL,
-                         inherit_phasing_from_positions=True):
-        for chromosome in self:
-            for adjacency in chromosome.iter_adjacencies(adjacency_type=adjacency_type,
-                                                         inherit_phasing_from_positions=inherit_phasing_from_positions):
-                yield adjacency
-
-    def __add__(self, other):
-        return self.__class__(list.__add__(self, other))
-
-    def __mul__(self, other):
-        return self.__class__(list.__mul__(self, other))
-
-    def __getitem__(self, item):
-        result = list.__getitem__(self, item)
-        if isinstance(result, Chromosome):
-            return result
-        try:
-            return self.__class__(result)
-        except TypeError:
-            return result
-
-    def iter_telomeres(self):
-        for chromosome in self:
-            ss, es = chromosome[0], chromosome[-1]
-            lt = ss.start_position
-            rt = es.end_position
-            yield lt
-            yield rt
+# class Chromosome(list):
+#     """just a standard list of segments with a possibility for extended functionality later on"""
+#
+#     def iter_adjacencies(self, adjacency_type=AdjacencyType.NOVEL, inherit_phasing_from_positions=True):
+#         lsg, rsg = itertools.tee(self)
+#         next(rsg, None)
+#         for ls, rs in zip(lsg, rsg):
+#             p1, p2 = ls.end_position, rs.start_position
+#             result = Adjacency(position1=p1, position2=p2, adjacency_type=adjacency_type)
+#             if inherit_phasing_from_positions and p1.is_haplotype_specific and p2.is_haplotype_specific:
+#                 if p1 > p2:
+#                     phasing = haplotype_pair_to_phasing(h1=p2.haplotype, h2=p1.haplotype)
+#                 else:
+#                     phasing = haplotype_pair_to_phasing(h1=p1.haplotype, h2=p2.haplotype)
+#                 result.extra[PHASING] = phasing
+#             yield result
+#
+#     def __add__(self, other):
+#         return self.__class__(list.__add__(self, other))
+#
+#     def __mul__(self, other):
+#         return self.__class__(list.__mul__(self, other))
+#
+#     def __getitem__(self, item):
+#         result = list.__getitem__(self, item)
+#         try:
+#             return self.__class__(result)
+#         except TypeError:
+#             return result
 
 
 class AdjacencyGroupType(Enum):
@@ -1019,20 +1210,12 @@ def propagate_haplotype_segment_to_positions(segment, inplace=True):
     return result
 
 
-def propagate_haplotype_chrom_to_positions(chromosome, inplace=True):
-    result = Chromosome()
-    for s in chromosome:
-        v = propagate_haplotype_segment_to_positions(segment=s, inplace=inplace)
-        result.append(v)
-    return result
-
-
-def propagate_haplotype_genome_to_positions(genome, inplace=True):
-    result = Genome()
-    for chromosome in genome:
-        v = propagate_haplotype_chrom_to_positions(chromosome=chromosome, inplace=inplace)
-        result.append(v)
-    return result
+# def propagate_haplotype_chrom_to_positions(chromosome, inplace=True):
+#     result = Chromosome()
+#     for s in chromosome:
+#         v = propagate_haplotype_segment_to_positions(segment=s, inplace=inplace)
+#         result.append(v)
+#     return result
 
 
 def propagate_phasing_adjacency_to_positions(adjacency, inplace=True):
@@ -1103,8 +1286,13 @@ def cn_distance_inter_scnt(tensor1, tensor2, segments, segments_to_fragments=Non
         for cid_source, cid_target in zip(clone_ids_source, clone_ids_target):
             for sid in sids:
                 segment_length = sids_to_segments[sid].length
-                cn_dif_A = abs(tensor1[cid_source].get_cn(sid=sid, haplotype=Haplotype.A, default=0) - tensor2[cid_target].get_cn(sid=sid, haplotype=Haplotype.A, default=0))
-                cn_dif_B = abs(tensor1[cid_source].get_cn(sid=sid, haplotype=Haplotype.B, default=0) - tensor2[cid_target].get_cn(sid=sid, haplotype=Haplotype.B, default=0))
+                cnAt1 = tensor1[cid_source].get_cn(sid=sid, haplotype=Haplotype.A, default=-1)
+                cnAt2 = tensor2[cid_target].get_cn(sid=sid, haplotype=Haplotype.A, default=-1)
+                cn_dif_A = abs(cnAt1 - cnAt2)
+                cnBt1 = tensor1[cid_source].get_cn(sid=sid, haplotype=Haplotype.B, default=-1)
+                cnBt2 = tensor2[cid_target].get_cn(sid=sid, haplotype=Haplotype.B, default=-1)
+                cn_dif_B = abs(cnBt1 - cnBt2)
+                assert -1 not in {cnAt1, cnAt2, cnBt1, cnBt2}
                 value = ((cn_dif_A + cn_dif_B) * segment_length)
                 clone_specific_fid_ab[cid_target] += value
                 fid_value_ab += value
@@ -1112,8 +1300,13 @@ def cn_distance_inter_scnt(tensor1, tensor2, segments, segments_to_fragments=Non
         for cid_source, cid_target in zip(clone_ids_source, clone_ids_target):
             for sid in sids:
                 segment_length = sids_to_segments[sid].length
-                cn_dif_A = abs(tensor1[cid_source].get_cn(sid=sid, haplotype=Haplotype.A, default=0) - tensor2[cid_target].get_cn(sid=sid, haplotype=Haplotype.B, default=0))
-                cn_dif_B = abs(tensor1[cid_source].get_cn(sid=sid, haplotype=Haplotype.B, default=0) - tensor2[cid_target].get_cn(sid=sid, haplotype=Haplotype.A, default=0))
+                cnAt1 = tensor1[cid_source].get_cn(sid=sid, haplotype=Haplotype.A, default=-1)
+                cnBt2 = tensor2[cid_target].get_cn(sid=sid, haplotype=Haplotype.B, default=-1)
+                cn_dif_A = abs(cnAt1 - cnBt2)
+                cnBt1 = tensor1[cid_source].get_cn(sid=sid, haplotype=Haplotype.B, default=0)
+                cnAt2 = tensor2[cid_target].get_cn(sid=sid, haplotype=Haplotype.A, default=0)
+                cn_dif_B = abs(cnBt1 - cnAt2)
+                assert -1 not in {cnAt1, cnAt2, cnBt1, cnBt2}
                 value = ((cn_dif_A + cn_dif_B) * segment_length)
                 clone_specific_fid_ba[cid_target] += value
                 fid_value_ba += value
@@ -1440,12 +1633,13 @@ def refined_scnt(segments, scnt, merge_fragments=True, max_merge_gap=1000000000,
             continue
         current_new_fragment = deepcopy(chr_fragments[0])
         outermost_start_position = outermost_positions.get(chr_name, {"start": current_new_fragment.start_position}).get("start", current_new_fragment.start_position)
+        current_new_f_id = current_new_fragment.stable_id_non_hap
+        current_f_cnas = {clone_id: scnt[clone_id].get_cn(sid=current_new_f_id, haplotype=Haplotype.A, default=0) for clone_id in clone_ids}
+        current_f_cnbs = {clone_id: scnt[clone_id].get_cn(sid=current_new_f_id, haplotype=Haplotype.B, default=0) for clone_id in clone_ids}
         if extend_outermost and current_new_fragment.start_coordinate > outermost_start_position.coordinate:
             outermost_start_position.coordinate = max(0, outermost_start_position.coordinate - outermost_positions_margin)
             current_new_fragment.start_position = outermost_start_position
         current_new_f_id = current_new_fragment.stable_id_non_hap
-        current_f_cnas = {clone_id: scnt[clone_id].get_cn(sid=current_new_f_id, haplotype=Haplotype.A, default=0) for clone_id in clone_ids}
-        current_f_cnbs = {clone_id: scnt[clone_id].get_cn(sid=current_new_f_id, haplotype=Haplotype.B, default=0) for clone_id in clone_ids}
         old_to_new = [current_new_f_id]
         for fragment in chr_fragments[1:]:
             distance = fragment.start_position.coordinate - current_new_fragment.end_position.coordinate

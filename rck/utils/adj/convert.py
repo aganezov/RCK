@@ -9,6 +9,8 @@ import vcf
 from rck.core.io import EXTERNAL_NA_ID, SVTYPE, write_adjacencies_to_destination, COPY_NUMBER, parse_segment_extra
 from rck.core.structures import Strand, Position, Adjacency, AdjacencyType, Phasing, Segment
 
+from rck.utils.adj.stats import get_adj_size
+
 VCF_FILTER = "vcf_filter"
 VCF_FILTER2 = "vcf_filter2"
 STRIP_CHR = "strip_CHR"
@@ -175,7 +177,7 @@ class StandardizedSVType(Enum):
     TRA = "TRA"
 
 
-def get_standardize_sv_type(adjacency: Adjacency):
+def get_standardize_sv_type(adjacency: Adjacency, length_field: str = "SVLEN"):
     # generic for all callers
     if adjacency.position1.chromosome != adjacency.position2.chromosome:
         return StandardizedSVType.TRA
@@ -186,6 +188,9 @@ def get_standardize_sv_type(adjacency: Adjacency):
     # generic for all callers
     if strands[0] == strands[1]:
         return StandardizedSVType.INV
+    #
+    # we are left with the case of +- strand, that can be both insertion and deletion
+    #
     lower_extra = {key.lower(): value for key, value in adjacency.extra.items()}
     if "or_svtype" in lower_extra:
         ###
@@ -198,6 +203,8 @@ def get_standardize_sv_type(adjacency: Adjacency):
         ###
         if "del" in lower_extra["or_svtype"].lower():
             return StandardizedSVType.DEL
+    if "svtype" in lower_extra and "del" in lower_extra["svtype"].lower():
+        return StandardizedSVType.DEL
     ###
     # more generic approach if both REF and ALT fields are present in the adjacency data
     ###
@@ -213,13 +220,9 @@ def get_standardize_sv_type(adjacency: Adjacency):
     ###
     # last resort based on positive/negative svlen
     ###
-    if SVLEN.lower() in lower_extra:
-        if isinstance(lower_extra[SVLEN.lower()], list):
-            length = int(float(lower_extra[SVLEN.lower()][0]))
-        else:
-            length = int(float(lower_extra[SVLEN.lower()]))
-        if length > 0:
-            return StandardizedSVType.INS
+    length = get_adj_size(adjacency, size_extra_field=length_field, size_extra_field_abs=False)
+    if length >= 0:
+        return StandardizedSVType.INS
     return StandardizedSVType.DEL
 
 
@@ -587,6 +590,7 @@ def get_nas_from_sniffles_vcf_records(sniffles_vcf_records, setup=None):
                 raise ValueError("Unknown strands {missing STRANDS entry}")
         if "ins" in svtype.lower():
             coord2 = coord1 + 1
+            strands = "+-"
         add_record_ref_alt_to_extra(svtype, record, extra)
         strand1 = Strand.from_pm_string(string=strands[0])
         strand2 = Strand.from_pm_string(string=strands[1])

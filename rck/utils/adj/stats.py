@@ -12,7 +12,10 @@ def get_size_bins(bins_strs):
 def get_adj_size(adjacency, size_extra_field="svlen", size_extra_field_abs=True, size_extra_seq_field=None):
     adj_size = None
     try:
-        adj_size = int(float(adjacency.extra[size_extra_field]))
+        size_extra_entry = adjacency.extra[size_extra_field]
+        if isinstance(size_extra_entry, list):
+            size_extra_entry = size_extra_entry[0]
+        adj_size = int(float(size_extra_entry))
         if size_extra_field_abs:
             adj_size = abs(adj_size)
     except (KeyError, ValueError):

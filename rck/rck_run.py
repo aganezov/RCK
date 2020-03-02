@@ -121,7 +121,7 @@ def main():
     run_group.add_argument("--run-group-m-default-fp", type=float, default=0.1)
     run_group.add_argument("--run-group-n-default-fp", type=float, default=0.1)
     run_group.add_argument("--run-segment-length-attr", choices=["length", "length_10", "length_100", "length_1000"], default="length_10")
-    run_group.add_argument("--run-g-allow-interrupted", action="store_true")
+    run_group.add_argument("--run-g-no-allow-interrupted", action="store_false", dest="run_g_allow_interrupted")
     ###
     output_group = parser.add_argument_group()
     output_group.add_argument("--o-prefix-name", type=str, dest="out_prefix_name", default="")

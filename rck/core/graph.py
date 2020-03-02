@@ -280,16 +280,16 @@ class IntervalAdjacencyGraph(object):
             return False
         return True
 
-    def represents_given_genome(self, genome):
-        if not self.is_copy_number_aware:
-            raise ValueError()
-        scn_profile = SegmentCopyNumberProfile.from_genome(genome=genome)
-        if not self.matches_segment_copy_number_profile(scn_profile=scn_profile):
-            return False
-        acn_profile = AdjacencyCopyNumberProfile.from_genome(genome=genome)
-        if not self.matches_adjacency_copy_number_profile(acn_profile=acn_profile):
-            return False
-        return True
+    # def represents_given_genome(self, genome):
+    #     if not self.is_copy_number_aware:
+    #         raise ValueError()
+    #     scn_profile = SegmentCopyNumberProfile.from_genome(genome=genome)
+    #     if not self.matches_segment_copy_number_profile(scn_profile=scn_profile):
+    #         return False
+    #     acn_profile = AdjacencyCopyNumberProfile.from_genome(genome=genome)
+    #     if not self.matches_adjacency_copy_number_profile(acn_profile=acn_profile):
+    #         return False
+    #     return True
 
     @property
     def is_copy_number_aware(self):
@@ -382,8 +382,11 @@ class IntervalAdjacencyGraph(object):
                 if u_data["object"] == v_data["object"] and u_data["object"].adjacency_type == v_data["object"].adjacency_type and u_data["object"].adjacency_type == adj_type:
                     assert v_key == u_key
                     edges_to_remove.append((u, v, v_key))
+        removed = set()
         for u, v, key in edges_to_remove:
-            self.graph.remove_edge(u=u, v=v, key=key)
+            if (u, v, key) not in removed:
+                self.graph.remove_edge(u=u, v=v, key=key)
+            removed.add((u, v, key))
 
     def remove_edges_with_zero_cn(self, check_cn_awareness=False, clear_nodes_after=True):
         self.remove_adjacency_edges_with_zero_cn(check_cn_awareness=check_cn_awareness, clear_nodes_after=clear_nodes_after)
@@ -459,14 +462,14 @@ class IntervalAdjacencyGraph(object):
                 return False
         return True
 
-    def assign_copy_numbers_from_genome(self, genome, ensure_topology=True):
-        if ensure_topology and not self.topology_allows_for_genome(genome=genome):
-            raise ValueError()
-        self.assign_copy_numbers_from_structure_profile(structure_profile=StructureProfile.from_genome(genome=genome))
+    # def assign_copy_numbers_from_genome(self, genome, ensure_topology=True):
+    #     if ensure_topology and not self.topology_allows_for_genome(genome=genome):
+    #         raise ValueError()
+    #     self.assign_copy_numbers_from_structure_profile(structure_profile=StructureProfile.from_genome(genome=genome))
 
-    def assign_copy_numbers_from_structure_profile(self, structure_profile):
-        self.assign_copy_numbers_from_scn_profile(scn_profile=structure_profile.scn_profile)
-        self.assign_copy_numbers_from_acn_profile(acn_profile=structure_profile.acn_profile)
+    # def assign_copy_numbers_from_structure_profile(self, structure_profile):
+    #     self.assign_copy_numbers_from_scn_profile(scn_profile=structure_profile.scn_profile)
+    #     self.assign_copy_numbers_from_acn_profile(acn_profile=structure_profile.acn_profile)
 
     def assign_copy_numbers_from_scn_profile(self, scn_profile):
         for u, v, data in self.segment_edges(data=True, sort=True):

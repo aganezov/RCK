@@ -10,13 +10,14 @@ import os
 from collections import defaultdict
 from copy import deepcopy
 from enum import Enum
-from typing import Iterable
+from typing import Iterable, Dict, Optional, Union, List, Tuple
 
 from rck.core.graph import IntervalAdjacencyGraph
 from rck.core.structures import AdjacencyCopyNumberProfile, AdjacencyGroup, CNBoundaries, SegmentCopyNumberBoundaries, AdjacencyGroupType
 from rck.core.structures import SegmentCopyNumberProfile, Haplotype, AdjacencyType, Phasing
 from rck.core.structures import Position, Strand, Adjacency, Segment
 from rck.utils.adj.analysis import ComplexRearrSignature
+from rck.utils.adj.stats import get_adj_size
 
 csv.field_size_limit(sys.maxsize)
 
@@ -26,6 +27,7 @@ AIDS = "aids"
 AG_TYPE = "agt"
 AG_LABELING = "agl"
 FALSE_POSITIVE = "fp"
+SVLEN = "svlen"
 
 CHR1 = "chr1"
 COORD1 = "coord1"
@@ -165,7 +167,7 @@ def read_scnt_from_file(file_name, clone_ids=None, separator="\t", extra_separat
                                      remove_cn_data_from_segs=remove_cn_data_from_segs)
 
 
-def read_scnt_from_source(source, clone_ids=None, separator="\t", extra_separator=";", remove_cn_data_from_segs=True):
+def read_scnt_from_source(source, clone_ids=None, separator="\t", extra_separator=";", remove_cn_data_from_segs=True) -> Tuple[List[Segment], Dict[str, SegmentCopyNumberProfile]]:
     segments = read_segments_from_source(source=source, separator=separator, extra_separator=extra_separator)
     for segment in segments:
         if COPY_NUMBER not in segment.extra:
@@ -327,7 +329,8 @@ def stream_segments_from_source(source, separator="\t", extra_separator=";"):
         yield segment
 
 
-def write_segments_to_file(file_name, segments, separator="\t", extra="all", extra_separator=";", extra_fill="", sort_segments=True):
+def write_segments_to_file(file_name: str, segments: Iterable[Segment], separator: str = "\t", extra: str = "all", extra_separator: str = ";", extra_fill: str = "",
+                           sort_segments: bool = True):
     with open(file_name, "wt") as destination:
         write_segments_to_destination(destination=destination, segments=segments, separator=separator,
                                       extra=extra, extra_separator=extra_separator, extra_fill=extra_fill, sort_segments=sort_segments)
@@ -343,7 +346,8 @@ def stringify_segment_cn_entry(entry):
     return str(result)
 
 
-def write_segments_to_destination(destination, segments, separator="\t", extra="all", extra_separator=";", extra_fill="", sort_segments=True):
+def write_segments_to_destination(destination, segments: Iterable[Segment], separator: str = "\t", extra: Union[str, List[str]] = "all", extra_separator: str = ";",
+                                  extra_fill: str = "", sort_segments: bool = True):
     if sort_segments:
         segments = sorted(segments, key=lambda s: (s.chromosome, s.start_position.coordinate, s.end_position.coordinate))
     header_exntries = [CHR, START, END]
@@ -378,7 +382,8 @@ def write_segments_to_destination(destination, segments, separator="\t", extra="
         writer.writerow(data)
 
 
-def write_scnt_to_file(file_name, segments, scnt, clone_ids=None, separator="\t", extra="all", extra_separator=";", extra_fill="", sort_segments=True, inplace=True):
+def write_scnt_to_file(file_name: str, segments: Iterable[Segment], scnt: Dict[str, SegmentCopyNumberProfile], clone_ids: Optional[Iterable[str]] = None,
+                       separator: str = "\t", extra: str = "all", extra_separator: str = ";", extra_fill: str = "", sort_segments: bool = True, inplace: bool = True):
     with open(file_name, "wt") as destination:
         write_scnt_to_destination(destination=destination, scnt=scnt, segments=segments, clone_ids=clone_ids, separator=separator, extra=extra, extra_separator=extra_separator,
                                   extra_fill=extra_fill, sort_segments=sort_segments, inplace=inplace)
@@ -403,7 +408,12 @@ def iter_segments_scnt_dummy(segments, scnt, clone_ids=None, inplace=True):
         yield segment
 
 
-def write_scnt_to_destination(destination, segments, scnt, clone_ids=None, separator="\t", extra="all", extra_separator=";", extra_fill="", sort_segments=True, inplace=True):
+def write_scnt_to_destination(destination, segments: Iterable[Segment], scnt: Dict[str, SegmentCopyNumberProfile], clone_ids: Optional[Iterable[str]] = None,
+                              separator: str = "\t", extra: Union[str, List[str]] = "all", extra_separator: str = ";", extra_fill: str = "", sort_segments: bool = True,
+                              inplace: bool = True):
+    """
+    Note: segments need to contain haploid (i.e., non-haplotype-specific entries) as to ensure no duplicates are encountered
+    """
     if clone_ids is None:
         clone_ids = sorted(scnt.keys())
     segments = iter_segments_scnt_dummy(segments=segments, scnt=scnt, clone_ids=clone_ids, inplace=inplace)
@@ -415,7 +425,7 @@ def write_scnt_to_destination(destination, segments, scnt, clone_ids=None, separ
                                   sort_segments=sort_segments)
 
 
-def iter_segments_scnb_dummy(segments, scnb, clone_ids=None, inplace=True):
+def iter_segments_scnb_dummy(segments: Iterable[Segment], scnb: Dict[str, SegmentCopyNumberBoundaries], clone_ids: Optional[Iterable[str]] = None, inplace: bool = True):
     if clone_ids is None:
         clone_ids = sorted(scnb.keys())
     for segment in segments:
@@ -441,7 +451,9 @@ def write_scnb_to_file(file_name, segments, scnb, clone_ids=None, separator="\t"
                                   sort_segments=sort_segments, inplace=inplace)
 
 
-def write_scnb_to_destination(destination, segments, scnb, clone_ids=None, separator="\t", extra="all", extra_separator=";", extra_fill="", sort_segments=True, inplace=True):
+def write_scnb_to_destination(destination, segments: Iterable[Segment], scnb, clone_ids: Optional[Iterable[str]] = None, separator: str = "\t",
+                              extra: Union[str, List[str]] = "all",
+                              extra_separator: str = ";", extra_fill: str = "", sort_segments: bool = True, inplace: bool = True):
     if clone_ids is None:
         clone_ids = sorted(scnb.keys())
     segments = iter_segments_scnb_dummy(segments=segments, scnb=scnb, clone_ids=clone_ids, inplace=inplace)
@@ -613,20 +625,32 @@ def is_format_extra_entry(entry):
     return not is_info_extra_entry(entry=entry)
 
 
-def get_vcf_info_string(adjacency, extra_fields, extra_fill=""):
+def get_vcf_info_string(adjacency, extra_fields, extra_fill="", length_field: str = "svlen", survivor_end: bool = False,
+                        standardize_type: bool = False):
+    from rck.utils.adj.convert import get_standardize_sv_type
     result = []
     extra_lower = {key.lower(): value for key, value in adjacency.extra.items() if key.upper() not in {"CHR2", "END", "STRANDS"}}
-    if "svtype" in extra_lower and "ins" in extra_lower["svtype"].lower():
+    if adjacency.position1.chromosome != adjacency.position2.chromosome:
+        coord2 = adjacency.position2.coordinate
+    elif "svtype" in extra_lower and "ins" in extra_lower["svtype"].lower() and not survivor_end:
         coord2 = adjacency.position1.coordinate
     else:
-        coord2 = adjacency.position2.coordinate
+        coord2 = adjacency.position1.coordinate + abs(get_adj_size(adjacency, size_extra_field=length_field, size_extra_field_abs=False))
     result.append("CHR2={chromosome}".format(chromosome=adjacency.position2.chromosome))
     result.append("END={coordinate}".format(coordinate=coord2))
     result.append("STRANDS={s1}{s2}".format(s1=str(adjacency.position1.strand), s2=str(adjacency.position2.strand)))
     for key in extra_fields:
         if key.upper() in {"CHR2", "END", "STRANDS"}:
             continue
-        value = extra_lower.get(key.lower(), extra_fill)
+        if key.upper() == "SVLEN":
+            if key.lower() in extra_lower and extra_lower[key.lower()] != "":
+                value = extra_lower[key.lower()]
+            else:
+                value = get_adj_size(adjacency, size_extra_field=length_field, size_extra_field_abs=False)
+        elif key.upper() == "SVTYPE" and standardize_type:
+            value = get_standardize_sv_type(adjacency).value
+        else:
+            value = extra_lower.get(key.lower(), extra_fill)
         if isinstance(value, (list, tuple)):
             value = ",".join(map(str, value))
         result.append("{entry_id}={value}".format(entry_id=key, value=value))
@@ -749,7 +773,9 @@ def write_adjacencies_to_vcf_sniffles_file(file_name, adjacencies, extra="all", 
 
 def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extra="all", extra_fill=".", sort_adjacencies=True,
                                                   dummy_clone="dummy_clone", clone_suffix="", alt_extra=None, ref_extra=None,
-                                                  dummy_clone_gt_extra=None, dummy_gt="./."):
+                                                  dummy_clone_gt_extra=None, dummy_gt="./.", length_field: str = "svlen", survivor_end: bool = False,
+                                                  normalize_types: bool = False):
+    from rck.utils.adj.convert import get_standardize_sv_type
     if sort_adjacencies:
         adjacencies = sorted(adjacencies, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
     adjacencies = list(adjacencies)
@@ -759,11 +785,13 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
     print("##source=RCK", file=destination)
     chromosomes = set()
     svtypes = set()
-    extra_fields = set()
+    extra_fields = {SVLEN}
     for adj in adjacencies:
         chromosomes.add(adj.position1.chromosome)
         chromosomes.add(adj.position2.chromosome)
-        if SVTYPE in adj.extra:
+        if normalize_types:
+            svtypes.add(get_standardize_sv_type(adj).value)
+        elif SVTYPE in adj.extra:
             svtypes.add(adj.extra[SVTYPE])
         for key in adj.extra.keys():
             if suitable_extra_entry(entry=key, extra=extra):
@@ -819,6 +847,9 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
     print("\t".join(header), file=destination)
 
     for adjacency in adjacencies:
+        if adjacency.position1.coordinate == adjacency.position2.coordinate and "ins" in adjacency.extra["svtype"].lower():
+            adjacency.position1.strand = Strand.FORWARD
+            adjacency.position2.strand = Strand.REVERSE
         print(adjacency.position1.chromosome, end="\t", file=destination)  # CHROM
         print(adjacency.position1.coordinate, end="\t", file=destination)  # POS
         print(adjacency.extra.get(EXTERNAL_NA_ID, adjacency.idx), end="\t", file=destination)  # ID
@@ -840,13 +871,16 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
                 alt_extra_value = alt_extra_value.split(",")
             alt_extra_value = [v for v in alt_extra_value if v != ref_extra_value]
             if alt_extra is not None and len(alt_extra_value) > 0 and all(map(lambda e: str(e).isalpha(), alt_extra_value)):
-                print(f'{",".join(map(str, alt_extra_value))}', end="\t", file=destination)     # ALT if there is sequence available and specified
+                print(f'{",".join(map(str, alt_extra_value))}', end="\t", file=destination)  # ALT if there is sequence available and specified
                 break
         else:
-            print("<{svtype}>".format(svtype=adjacency.extra.get(SVTYPE, "BND")), end="\t", file=destination)  # ALT
+            svtype = adjacency.extra.get(SVTYPE, "BND") if not normalize_types else get_standardize_sv_type(adjacency).value
+            print("<{svtype}>".format(svtype=svtype), end="\t", file=destination)  # ALT
         print(".", end="\t", file=destination)  # QUAL
         print("PASS", end="\t", file=destination)  # FILTER
-        print(get_vcf_info_string(adjacency=adjacency, extra_fields=sorted(extra_info_fields_and_numbers.keys()), extra_fill=extra_fill), end="\t", file=destination)  # INFO
+        print(get_vcf_info_string(adjacency=adjacency, extra_fields=sorted(extra_info_fields_and_numbers.keys()), extra_fill=extra_fill, length_field=length_field,
+                                  survivor_end=survivor_end, standardize_type=normalize_types),
+              end="\t", file=destination)  # INFO
         print(":".join(extra_format_fields_and_numbers.keys()), end="\t", file=destination)  # FORMAT
         clones_strings = []
         for clone_id in clone_ids:
@@ -855,16 +889,16 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
         print("\t".join(clones_strings), file=destination)  # SAMPLES
 
 
-def write_acnt_to_file(file_name, acnt, adjacencies, clone_ids=None,
-                       extra="all", extra_fill="", extra_separator=";", separator="\t", sort_adjacencies=True, output_reference=True, inplace=True,
-                       mix_reference_and_novel=False):
+def write_acnt_to_file(file_name: str, acnt: Dict[str, AdjacencyCopyNumberProfile], adjacencies: Iterable[Adjacency], clone_ids: Optional[Iterable[str]] = None,
+                       extra: str = "all", extra_fill: str = "", extra_separator: str = ";", separator: str = "\t", sort_adjacencies: bool = True, output_reference: bool = True,
+                       inplace: bool = True, mix_reference_and_novel: bool = False):
     with open(file_name, "wt") as destination:
         write_acnt_to_destination(destination=destination, acnt=acnt, adjacencies=adjacencies, clone_ids=clone_ids, extra=extra, extra_fill=extra_fill,
                                   extra_separator=extra_separator, separator=separator, sort_adjacencies=sort_adjacencies, output_reference=output_reference, inplace=inplace,
                                   mix_reference_and_novel=mix_reference_and_novel)
 
 
-def iter_adjacencies_acnt_dummy(adjacencies, acnt, clone_ids=None, inplace=True):
+def iter_adjacencies_acnt_dummy(adjacencies: Iterable[Adjacency], acnt: Dict[str, AdjacencyCopyNumberProfile], clone_ids: Optional[Iterable[str]] = None, inplace: bool = True):
     if clone_ids is None:
         clone_ids = sorted(acnt.keys())
     for adjacency in adjacencies:
@@ -883,9 +917,13 @@ def iter_adjacencies_acnt_dummy(adjacencies, acnt, clone_ids=None, inplace=True)
         yield adjacency
 
 
-def write_acnt_to_destination(destination, acnt, adjacencies, clone_ids=None,
-                              extra="all", extra_fill="", extra_separator=";", separator="\t", sort_adjacencies=True, output_reference=True, inplace=False,
+def write_acnt_to_destination(destination, acnt: Dict[str, AdjacencyCopyNumberProfile], adjacencies: Iterable[Adjacency], clone_ids: Optional[Iterable[str]] = None,
+                              extra: Union[str, List[str]] = "all", extra_fill: str = "", extra_separator: str = ";", separator: str = "\t", sort_adjacencies: bool = True,
+                              output_reference: bool = True, inplace: bool = False,
                               mix_reference_and_novel=False):
+    """
+    Note: adjacencies need to be non-haplotype-specific, as to ensure that no duplicates are encountered
+    """
     entries = list(adjacencies)
     if sort_adjacencies:
         entries = sorted(entries, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
@@ -906,7 +944,8 @@ def write_acnt_to_destination(destination, acnt, adjacencies, clone_ids=None,
                                      extra=extra, extra_fill=extra_fill, extra_separator=extra_separator, separator=separator, sort_adjacencies=False)
 
 
-def read_acnt_from_source(source, clone_ids=None, extra_separator=";", separator="\t", remove_cn_data_from_adj=True):
+def read_acnt_from_source(source, clone_ids=None, extra_separator=";", separator="\t", remove_cn_data_from_adj=True) -> Tuple[List[Adjacency],
+                                                                                                                              Dict[str, AdjacencyCopyNumberProfile]]:
     adjacencies = read_adjacencies_from_source(source=source, extra_separator=extra_separator, separator=separator)
     for adj in adjacencies:
         if COPY_NUMBER not in adj.extra:
@@ -1275,7 +1314,7 @@ def write_scnt_to_shatterseek_destination(destination, segments, scnt, clone_id=
     if clone_id not in scnt:
         raise ValueError("Clone {clone_id} is not present in the Segment Copy Number Tensor (available clone ids :{available})"
                          "".format(clone_id=clone_id, available=",".join(map(str, sorted(scnt.keys())))))
-    scnp : SegmentCopyNumberProfile = scnt[clone_id]
+    scnp: SegmentCopyNumberProfile = scnt[clone_id]
     if output_header:
         print("chrom", "start", "end", "CN", sep="\t", file=destination)
     for segment in segments:

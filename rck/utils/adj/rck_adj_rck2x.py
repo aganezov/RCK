@@ -33,6 +33,9 @@ def main():
     vcf_parser.add_argument("--o-no-include-ref", action="store_false", dest="include_ref")
     vcf_parser.add_argument("--clone-suffix", default="")
     vcf_parser.add_argument("--dummy-clone", default="dummy_clone")
+    vcf_parser.add_argument("--survivor-end", action="store_true", dest="survivor_end")
+    vcf_parser.add_argument("--extra-length", type=str, default="svlen")
+    vcf_parser.add_argument("--normalize-types", action="store_true", dest="normalize_types")
     vcf_parser.add_argument("--dummy-clone-gt-extra")
     vcf_parser.add_argument("--dummy-gt", default="./.")
     vcf_parser.add_argument("--alt-extra")
@@ -86,7 +89,9 @@ def main():
         write_adjacencies_to_vcf_sniffles_destination(destination=args.output, adjacencies=adjacencies, extra=extra,
                                                       dummy_clone=args.dummy_clone, clone_suffix=args.clone_suffix,
                                                       alt_extra=args.alt_extra, ref_extra=args.ref_extra,
-                                                      dummy_clone_gt_extra=args.dummy_clone_gt_extra, dummy_gt=args.dummy_gt)
+                                                      dummy_clone_gt_extra=args.dummy_clone_gt_extra, dummy_gt=args.dummy_gt,
+                                                      survivor_end=args.survivor_end, length_field=args.extra_length,
+                                                      normalize_types=args.normalize_types)
     elif args.command == "circa":
         logger.info("Converting input RCK formatted adjacencies into a Circa suitable format (extra column get transformed into a size column)")
         logger.info("Writing adjacencies info suitable for Circa to {file}".format(file=args.output))
