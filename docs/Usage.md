@@ -65,7 +65,3 @@ Other flags:
 * `--run-group-m-default-fp` - default False Positive values for *molecule* adjacencies groups (unless explicitly specified in with the `fp` value in the `extra` field). Default is 0.1
 * `--run-segment-length-attr` - an choice based attribute that is used to get the segments length. Default is `length_100` which means that for every segment of length `l` an `ceil(l/100)` value is used in the inference minimization. 
 
-
-### Examples
-
-The following command runs RCK inference on the clone- and allele-specific segment copy number tensor (stored in the `input.rck.scnt.tsv`)

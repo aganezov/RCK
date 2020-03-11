@@ -36,10 +36,11 @@ def get_noisy_scnt(segments: List[Segment], scnt: Dict[str, SegmentCopyNumberPro
         min_c = chrs_min[chrom]
         max_c = chrx_max[chrom]
         current_left = min_c
-        for boundary in range(min_c + chunk_size, max_c, chunk_size):
+        for boundary in range(min_c + chunk_size, max_c + chunk_size, chunk_size):
             s = Segment.from_chromosome_coordinates(chromosome=chrom, start=current_left + 1, end=boundary)
             current_left = s.end_coordinate
             chunk_segments.append(s)
+        chunk_segments[-1].end_position.coordinate = max_c
     all_positions = set()
     for tmp_segments in [segments, chunk_segments]:
         for s in tmp_segments:

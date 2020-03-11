@@ -60,11 +60,11 @@ def main():
     with open(os.path.join(output_dir, "true_rearr_history.yaml"), "wt") as dest:
         logger.info(f"Outputting exact rearrangement history to {dest.name}")
         yaml.dump(sim_manager.as_yaml(), stream=dest)
-    with open(os.path.join(output_dir, "scnt.rck.tsv"), "wt") as dest:
+    with open(os.path.join(output_dir, "rck.scnt.tsv"), "wt") as dest:
         logger.info(f"Outputting true segment copy number tensor to {dest.name}")
         write_scnt_to_destination(destination=dest, segments={s.get_non_hap_copy() for s in sim_manager.refined_genomes[sim_manager.root_name].iter_segments()},
                                   scnt=scnt)
-    with open(os.path.join(output_dir, "acnt.rck.tsv"), "wt") as dest:
+    with open(os.path.join(output_dir, "rck.acnt.tsv"), "wt") as dest:
         logger.info(f"Outputting true adjacency copy number tensor to {dest.name}")
         write_acnt_to_destination(destination=dest, acnt=acnt, adjacencies=all_adjacencies)
 

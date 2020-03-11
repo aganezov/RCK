@@ -141,7 +141,7 @@ def cn_change(segments1, scnt1, segments2, scnt2, both_haplotype_specific=False)
             clone_specific_distances = cn_distance_inter_scnt(tensor1=tmp_scnt1, tensor2=tmp_scnt2, segments=segments1)
             case = CloneCollectionCNInstance(instances1=clone_ids1_instances, instances2=clone_ids2_instances,
                                              mapping1=clone_ids1_mapping, mapping2=clone_ids2_mapping)
-            result[case] = (clone_specific_distances, clone_specific_cn_change_result)
+            result[case] = (segments1, clone_specific_distances, clone_specific_cn_change_result)
     return result
 
 
@@ -161,8 +161,9 @@ def changed_segments(scnp1: SegmentCopyNumberProfile, scnp2: SegmentCopyNumberPr
     for segment in segments:
         sid = segment.stable_id_non_hap
         for hap in [Haplotype.A, Haplotype.B]:
-            source_cn = scnp1.get_cn(sid=sid, haplotype=hap, default=0)
-            target_cn = scnp2.get_cn(sid=sid, haplotype=hap, default=0)
+            source_cn = scnp1.get_cn(sid=sid, haplotype=hap, default=-1)
+            target_cn = scnp2.get_cn(sid=sid, haplotype=hap, default=-1)
+            assert -1 not in {source_cn, target_cn}
             if source_cn != target_cn:
                 result.append(segment)
     return result
@@ -173,8 +174,9 @@ def changed_ampl_segments(scnp1: SegmentCopyNumberProfile, scnp2: SegmentCopyNum
     for segment in segments:
         sid = segment.stable_id_non_hap
         for hap in [Haplotype.A, Haplotype.B]:
-            source_cn = scnp1.get_cn(sid=sid, haplotype=hap, default=0)
-            target_cn = scnp2.get_cn(sid=sid, haplotype=hap, default=0)
+            source_cn = scnp1.get_cn(sid=sid, haplotype=hap, default=-1)
+            target_cn = scnp2.get_cn(sid=sid, haplotype=hap, default=-1)
+            assert -1 not in {source_cn, target_cn}
             if source_cn > 1 and target_cn <= 1:
                 result.append(segment)
     return result
@@ -185,8 +187,9 @@ def changed_neutral_segments(scnp1: SegmentCopyNumberProfile, scnp2: SegmentCopy
     for segment in segments:
         sid = segment.stable_id_non_hap
         for hap in [Haplotype.A, Haplotype.B]:
-            source_cn = scnp1.get_cn(sid=sid, haplotype=hap, default=0)
-            target_cn = scnp2.get_cn(sid=sid, haplotype=hap, default=0)
+            source_cn = scnp1.get_cn(sid=sid, haplotype=hap, default=-1)
+            target_cn = scnp2.get_cn(sid=sid, haplotype=hap, default=-1)
+            assert -1 not in {source_cn, target_cn}
             if source_cn == 1 and target_cn != 1:
                 result.append(segment)
     return result
@@ -197,8 +200,9 @@ def changed_loss_segments(scnp1: SegmentCopyNumberProfile, scnp2: SegmentCopyNum
     for segment in segments:
         sid = segment.stable_id_non_hap
         for hap in [Haplotype.A, Haplotype.B]:
-            source_cn = scnp1.get_cn(sid=sid, haplotype=hap, default=0)
-            target_cn = scnp2.get_cn(sid=sid, haplotype=hap, default=0)
+            source_cn = scnp1.get_cn(sid=sid, haplotype=hap, default=-1)
+            target_cn = scnp2.get_cn(sid=sid, haplotype=hap, default=-1)
+            assert -1 not in {source_cn, target_cn}
             if source_cn == 0 and target_cn > 0:
                 result.append(segment)
     return result
