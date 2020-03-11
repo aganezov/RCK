@@ -6,8 +6,8 @@ from copy import deepcopy, copy
 from sortedcontainers import SortedList
 import statistics
 
-from rck.core.io import EXTERNAL_NA_ID
-from rck.core.structures import Strand, Adjacency, Position
+from rck.core.io import EXTERNAL_NA_ID, COPY_NUMBER, stringify_adjacency_cn_entry, ADJACENCY_TYPE
+from rck.core.structures import Strand, Adjacency, Position, Phasing, AdjacencyCopyNumberProfile, Segment
 from rck.utils.adj.convert import GUNDEM_PER_SAMPLE_SUPPORT
 
 ORIGIN_IDS = "origin_ids"
@@ -201,7 +201,12 @@ class Merger(object):
         return case1 or case2
 
 
-def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude=None, include_both=True, exclude_both=False):
+ANNOTATE_RETAINED_EXTRA_FIELD = "retained_by"
+
+
+def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude=None, include_both=True, exclude_both=False, include_spanning=False, exclude_spanning=False,
+                                              annotate_retained=False, annotate_retained_extra_field_prefix=None, annotated_retained_segments_extra_field=None,
+                                              annotate_short_circ=False):
     if include is None:
         include = []
     if exclude is None:
@@ -218,19 +223,35 @@ def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude
         exclude_by_chr[chr] = sorted(exclude_by_chr[chr], key=lambda s: (s.start_coordinate, s.end_coordinate))
     include_by_chr = dict(include_by_chr)
     exclude_by_chr = dict(exclude_by_chr)
+    annotate_retained_extra_field = ANNOTATE_RETAINED_EXTRA_FIELD
+    if annotate_retained_extra_field_prefix is not None:
+        annotate_retained_extra_field = "_".join([annotate_retained_extra_field_prefix, annotate_retained_extra_field])
     for adj in adjacencies:
         retain = True
         chr1, chr2 = adj.position1.chromosome, adj.position2.chromosome
         chr1, chr2 = chr1.lower(), chr2.lower()
         include_segments_chr1 = include_by_chr.get(chr1, [])
         include_segments_chr2 = include_by_chr.get(chr2, [])
+        annotations_segments = []
         if len(include_segments_chr1) != 0 or len(include_segments_chr2) != 0:
-            chr1in = coordinate_in_any_segment(coordinate=adj.position1.coordinate, segments=include_segments_chr1)
-            chr2in = coordinate_in_any_segment(coordinate=adj.position2.coordinate, segments=include_segments_chr2)
+            chr1_segments_in = coordinate_in_segments(coordinate=adj.position1.coordinate, segments=include_segments_chr1, short_circ=annotate_short_circ)
+            chr2_segments_in = coordinate_in_segments(coordinate=adj.position2.coordinate, segments=include_segments_chr2, short_circ=annotate_short_circ)
+            chr1in = len(chr1_segments_in) > 0
+            chr2in = len(chr2_segments_in) > 0
             if include_both:
-                retain &= chr1in and chr2in
+                retain = chr1in and chr2in
             else:
-                retain &= chr1in or chr2in
+                retain = chr1in or chr2in
+            if retain and annotate_retained:
+                annotations_segments.extend(chr1_segments_in)
+                annotations_segments.extend(chr2_segments_in)
+            if include_spanning and chr1 == chr2 and len(include_segments_chr1) != 0:
+                spanned_segments = coordinates_span_segments(coordinate1=adj.position1.coordinate, coordinate2=adj.position2.coordinate, segments=include_segments_chr1,
+                                                             partial=False,
+                                                             short_circ=annotate_short_circ)
+                retain |= len(spanned_segments) > 0
+                if retain and annotate_retained:
+                    annotations_segments.extend(spanned_segments)
         elif len(include_by_chr) > 0:
             retain = False
         if not retain:
@@ -241,19 +262,27 @@ def filter_adjacencies_by_chromosomal_regions(adjacencies, include=None, exclude
             chr1in = coordinate_in_any_segment(coordinate=adj.position1.coordinate, segments=exclude_segments_chr1)
             chr2in = coordinate_in_any_segment(coordinate=adj.position2.coordinate, segments=exclude_segments_chr2)
             if exclude_both:
-                retain &= not (chr1in and chr2in)
+                retain = not (chr1in and chr2in)
             else:
-                retain &= not (chr1in or chr2in)
+                retain = not (chr1in or chr2in)
+            if exclude_spanning and chr1 == chr2 and len(exclude_segments_chr1) != 0:
+                retain &= not coordinates_span_any_segment(coordinate1=adj.position1.coordinate, coordinate2=adj.position2.coordinate, segments=exclude_segments_chr1,
+                                                           partial=False)
         if retain:
+            if annotate_retained and len(annotations_segments) > 0:
+                annotations = set()
+                for segment in annotations_segments:
+                    annotations.add(segment.extra.get(annotated_retained_segments_extra_field, segment.stable_id_non_hap))
+                adj.extra[annotate_retained_extra_field] = sorted(annotations)
             yield adj
 
 
 def filter_adjacencies_by_size(adjacencies, min_size=0, max_size=1000000000, size_extra_field=None, size_extra_seq_field=None,
-                               allow_inter_chr=True, size_extra_field_abs=True, allow_self_loops=True):
+                               allow_inter_chr=True, allow_intra_chr=True, size_extra_field_abs=True, allow_self_loops=True):
     for adj in adjacencies:
         adj_size = None
         try:
-            adj_size = int(adj.extra[size_extra_field])
+            adj_size = int(float(adj.extra[size_extra_field]))
             if size_extra_field_abs:
                 adj_size = abs(adj_size)
         except (KeyError, ValueError):
@@ -265,17 +294,60 @@ def filter_adjacencies_by_size(adjacencies, min_size=0, max_size=1000000000, siz
                 pass
         if adj_size is None:
             adj_size = adj.distance_non_hap
-        if adj_size == 0 and allow_self_loops:
+        if adj.position1.chromosome != adj.position2.chromosome:
+            if allow_inter_chr:
+                yield adj
+        elif allow_intra_chr:
+            if not allow_self_loops and adj_size == 0:
+                continue
+            if adj_size < min_size or adj_size > max_size:
+                continue
             yield adj
-        elif adj_size == -1 and allow_inter_chr:
-            yield adj
-        elif min_size <= adj_size <= max_size:
-            yield adj
+
+
+def coordinate_in_segments(coordinate, segments, short_circ=False):
+    result = []
+    segments = sorted(segments, key=lambda s: (s.start_coordinate, s.end_coordinate))
+    for segment in segments:
+        if coordinate < segment.start_coordinate:
+            break
+        if segment.start_coordinate <= coordinate <= segment.end_coordinate:
+            result.append(segment)
+            if short_circ:
+                return result
+    return result
+
+
+def coordinates_span_segments(coordinate1, coordinate2, segments, partial=True, short_circ=False):
+    result = []
+    coordinate1, coordinate2 = sorted([coordinate1, coordinate2])
+    segments = sorted(segments, key=lambda s: (s.start_coordinate, s.end_coordinate))
+    for segment in segments:
+        if coordinate2 < segment.start_coordinate:
+            break
+        if partial and (segment.start_coordinate <= coordinate1 <= segment.end_coordinate or segment.start_coordinate <= coordinate2 <= segment.end_coordinate):
+            result.append(segment)
+            if short_circ:
+                return result
+        elif coordinate1 <= segment.start_coordinate and coordinate2 >= segment.end_coordinate:
+            result.append(segment)
+            if short_circ:
+                return result
+    return result
 
 
 def coordinate_in_any_segment(coordinate, segments):
     for segment in segments:
         if segment.start_coordinate <= coordinate <= segment.end_coordinate:
+            return True
+    return False
+
+
+def coordinates_span_any_segment(coordinate1, coordinate2, segments, partial=True):
+    for segment in segments:
+        if partial and (segment.start_coordinate <= coordinate1 <= segment.end_coordinate or segment.start_coordinate <= coordinate2 <= segment.end_coordinate):
+            return True
+        elif coordinate1 <= segment.start_coordinate and coordinate2 >= segment.end_coordinate:
             return True
     return False
 
@@ -287,9 +359,11 @@ def get_shared_nas_parser():
     shared_parser.add_argument("--chrs-include", action="append", nargs=1)
     shared_parser.add_argument("--chrs-include-file", type=argparse.FileType("rt"))
     shared_parser.add_argument("--chrs-include-no-both", action="store_false", dest="include_both")
+    shared_parser.add_argument("--chrs-include-spanning", action="store_true", dest="include_spanning")
     shared_parser.add_argument("--chrs-exclude", action="append", nargs=1)
     shared_parser.add_argument("--chrs-exclude-file", type=argparse.FileType("rt"))
     shared_parser.add_argument("--chrs-exclude-both", action="store_true", dest="exclude_both")
+    shared_parser.add_argument("--chrs-exclude-spanning", action="store_true", dest="exclude_spanning")
     return shared_parser
 
 
@@ -350,6 +424,15 @@ def filter_adjacencies_by_extra(adjacencies,
                 for regex in regex_list:
                     if field in adj.extra:
                         data = adj.extra[field]
+                        if not isinstance(data, str):
+                            if field == COPY_NUMBER:
+                                data = stringify_adjacency_cn_entry(entry=data)
+                            else:
+                                data = str(data)
+                        if regex.search(data) is not None:
+                            keep = True
+                    elif field.lower() == ADJACENCY_TYPE.lower():
+                        data = str(adj.adjacency_type.value)
                         if regex.search(data) is not None:
                             keep = True
                     elif keep_extra_field_missing_strategy == REMOVE:
@@ -363,6 +446,16 @@ def filter_adjacencies_by_extra(adjacencies,
                 for regex in regex_list:
                     if field in adj.extra:
                         data = adj.extra[field]
+                        if not isinstance(data, str):
+                            if field == COPY_NUMBER:
+                                data = stringify_adjacency_cn_entry(entry=data)
+                            else:
+                                data = str(data)
+                        if regex.search(data) is not None:
+                            keep = False
+                            break
+                    elif field.lower() == ADJACENCY_TYPE.lower():
+                        data = str(adj.adjacency_type.value)
                         if regex.search(data) is not None:
                             keep = False
                             break
@@ -431,6 +524,37 @@ def refined_adjacencies_reciprocal(novel_adjacencies, max_distance, inplace=Fals
     return novel_adjacencies
 
 
+def iter_haploid_adjacencies(adjacencies, copy=True):
+    for adj in adjacencies:
+        result = adj
+        if copy:
+            result = deepcopy(adj)
+        if COPY_NUMBER in result.extra:
+            cn_entry = result.extra[COPY_NUMBER]
+            result_cn_entry = {}
+            for clone_id, cn_dict in cn_entry.items():
+                new_cn_dict = {Phasing.AA: sum(cn_dict.values())}
+                result_cn_entry[clone_id] = new_cn_dict
+            result.extra[COPY_NUMBER] = result_cn_entry
+        yield result
+
+
+def haploid_adjacencies(adjacencies, copy=True):
+    return list(iter_haploid_adjacencies(adjacencies=adjacencies, copy=copy))
+
+
+def get_haploid_acnt(adjacencies, acnt):
+    result = {clone_id: AdjacencyCopyNumberProfile() for clone_id in sorted(acnt.keys())}
+    for adj in adjacencies:
+        aid = adj.stable_id_non_phased
+        for clone_id in result.keys():
+            result_acnp: AdjacencyCopyNumberProfile = result[clone_id]
+            source_acnp: AdjacencyCopyNumberProfile = acnt[clone_id]
+            total_cn = source_acnp.get_combined_cn(aid=aid)
+            result_acnp.set_cn_record(aid=aid, phasing=Phasing.AA, cn=total_cn)
+    return result
+
+
 def positions_are_reciprocal(p1, p2, max_distance):
     if p1.chromosome != p2.chromosome:
         return False
@@ -453,3 +577,146 @@ def update_position_in_adjacency(adjacency, old_position, new_position):
         adjacency.position1 = deepcopy(new_position)
     if adjacency.position2 == old_position:
         adjacency.position2 = deepcopy(new_position)
+
+
+def element_before_window(window, element, adj_full_cnt=True):
+    """
+    Returning True in every ambiguous situation, as that simply skips the element
+    """
+    if isinstance(element, Position):
+        return element.coordinate < window.start_coordinate
+    elif isinstance(element, Adjacency):
+        p1_same_chr = element.position1.chromosome == window.chromosome
+        p2_same_chr = element.position2.chromosome == window.chromosome
+        if adj_full_cnt:
+            if not (p1_same_chr and p2_same_chr):
+                return True
+            if (p1_same_chr and element.position1.coordinate < window.start_coordinate) or (p2_same_chr and element.position2.coordinate < window.start_coordinate):
+                return True
+            return False
+        else:
+            if p1_same_chr and element.position1.coordinate < window.start_coordinate:
+                return True
+            elif p2_same_chr and element.position2.coordinate < window.start_coordinate:
+                return True
+            else:
+                return False
+    return True
+
+
+def element_in_window(window, element, adj_full_cnt=True):
+    if isinstance(element, Position):
+        return window.start_coordinate <= element.coordinate <= window.end_coordinate
+    elif isinstance(element, Adjacency):
+        p1_same_chr = element.position1.chromosome == window.chromosome
+        p2_same_chr = element.position2.chromosome == window.chromosome
+        p1_in = p1_same_chr and window.start_coordinate <= element.position1.coordinate <= window.end_coordinate
+        p2_in = p2_same_chr and window.start_coordinate <= element.position2.coordinate <= window.end_coordinate
+        if adj_full_cnt:
+            cnt = p1_in and p2_in
+        else:
+            cnt = p1_in or p2_in
+        return cnt
+    return False
+
+
+def get_circa_adj_cnt(adjacencies, window_size=10000000, chr_sizes=None, element="breakend", adj_full_cnt=True):
+    result = defaultdict(int)
+    adjacencies_ids_by_chrs = defaultdict(set)
+    adjacencies_by_ids = {adj.stable_id_non_phased: adj for adj in adjacencies}
+    for adj in adjacencies_by_ids.values():
+        adjacencies_ids_by_chrs[adj.position1.chromosome].add(adj.stable_id_non_phased)
+        adjacencies_ids_by_chrs[adj.position2.chromosome].add(adj.stable_id_non_phased)
+    adjacencies_by_chr = defaultdict(list)
+    for chr_name in list(adjacencies_ids_by_chrs.keys()):
+        sorted_chr_adjacencies = sorted([adjacencies_by_ids[aid] for aid in adjacencies_ids_by_chrs[chr_name]],
+                                        key=lambda adj: (adj.position1.coordinate, adj.position2.coordinate))
+        adjacencies_by_chr[chr_name] = sorted_chr_adjacencies
+    windows_by_chr = defaultdict(list)
+    if chr_sizes is None:
+        chr_sizes = {}
+    for chr_name in set(chr_sizes.keys()) | set(adjacencies_by_chr.keys()):
+        start = 0
+        default = adjacencies_by_chr[chr_name][-1].position2.coordinate if chr_name in adjacencies_by_chr else 0
+        end = chr_sizes.get(chr_name, default)
+        windows_boundaries = list(range(start, end, window_size))
+        if windows_boundaries[-1] != end:
+            windows_boundaries.append(end)
+        for lb, rb in zip(windows_boundaries[:-1], windows_boundaries[1:]):
+            segment = Segment.from_chromosome_coordinates(chromosome=chr_name, start=lb + 1, end=rb)
+            windows_by_chr[chr_name].append(segment)
+    # counted_entries = set()
+    for chr_name in windows_by_chr.keys():
+        chr_windows = iter(windows_by_chr[chr_name])
+        current_window = next(chr_windows, None)
+        elements = []
+        if element == "breakend":
+            for adj in adjacencies_by_chr[chr_name]:
+                for p in [adj.position1, adj.position2]:
+                    if p.chromosome == chr_name:
+                        elements.append(p)
+        elif element == "adj":
+            for adj in adjacencies_by_chr[chr_name]:
+                p1_in = adj.position1.chromosome == chr_name
+                p2_in = adj.position2.chromosome == chr_name
+                if adj_full_cnt:
+                    cnt = p1_in and p2_in
+                else:
+                    cnt = p1_in or p2_in
+                if cnt:
+                    elements.append(adj)
+        for entry in elements:
+            if current_window is None:
+                break
+            # element_id = element.stable_id_non_hap if isinstance(element, Position) else element.stable_id_non_phased
+            # if element_id in counted_entries:
+            #     continue
+            # counted_entries.add(element_id)
+            if element_before_window(current_window, entry, adj_full_cnt=adj_full_cnt):
+                continue
+            elif element_in_window(current_window, entry, adj_full_cnt=adj_full_cnt):
+                result[current_window] += 1
+            else:  # after window
+                current_window = next(chr_windows, None)
+    return result
+
+
+def update_adjacencies(target_adjacencies, source_adjacencies,
+                       update_coords=True, update_coord1=True, update_coord2=True,
+                       update_strands=True, update_strand1=True, update_strand2=True,
+                       extra_exclude=None, extra_include=None, include_missing=True):
+    if extra_exclude is None:
+        extra_exclude = set()
+    if extra_include is None:
+        extra_include = set()
+    source_adjacencies_by_aids = {adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased): adj for adj in source_adjacencies}
+    for adj in target_adjacencies:
+        source_adj: Adjacency = source_adjacencies_by_aids.get(adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased), None)
+        if source_adj is None:
+            yield adj
+        if update_coords:
+            if update_coord1:
+                adj.position1.coordinate = source_adj.position1.coordinate
+            if update_coord2:
+                adj.position2.coordinate = source_adj.position2.coordinate
+        if update_strands:
+            if update_strand1:
+                adj.position1.strand = source_adj.position1.strand
+            if update_strand2:
+                adj.position2.strand = source_adj.position2.strand
+        if len(extra_exclude) == 1 and list(extra_exclude)[0] == "all":
+            yield adj
+        updated_extra = deepcopy(adj.extra)
+        for key in adj.extra.keys():
+            if key in extra_exclude:
+                continue
+            if len(extra_include) > 0 and key not in extra_include:
+                continue
+            updated_extra[key] = source_adj.extra.get(key, updated_extra[key])
+        if include_missing:
+            for key, value in source_adj.extra.items():
+                if key in updated_extra:
+                    continue
+                updated_extra[key] = value
+        adj.extra = updated_extra
+        yield adj

@@ -9,6 +9,8 @@ import math
 from collections import Counter
 import pandas as pd
 
+from rck.utils.adj.analysis import get_complex_rearrangements_signatures
+
 current_file_level = 3
 current_dir = os.path.dirname(os.path.realpath(__file__))
 for _ in range(current_file_level):
@@ -16,9 +18,11 @@ for _ in range(current_file_level):
 sys.path.append(current_dir)
 
 import rck
-from rck.core.io import write_adjacencies_to_destination, read_adjacencies_from_source
+from rck.core.io import write_adjacencies_to_destination, read_adjacencies_from_source, get_logging_cli_parser, write_complex_rearr_signature_groups_to_destination, \
+    read_acnt_from_source
 from rck.utils.adj.convert import *
-from rck.utils.adj.process import filter_adjacencies_by_chromosomal_regions, get_shared_nas_parser, ORIGIN_IDS
+from rck.utils.adj.process import filter_adjacencies_by_chromosomal_regions, get_shared_nas_parser, ORIGIN_IDS, refined_adjacencies_reciprocal
+from rck.utils.adj.stats import merged_source_tally, get_size_bins
 
 
 def get_str_size_label(int_size):
@@ -46,6 +50,7 @@ def get_length(na, treat_ins_separately=True):
 
 
 def main():
+    cli_logging_parser = get_logging_cli_parser()
     parser = argparse.ArgumentParser(prog="RCK-UTILS-ADJ-STATS")
     parser.add_argument('--version', action='version', version=rck.version)
     ######
@@ -96,12 +101,57 @@ def main():
     support_parser.add_argument("--no-bar-values", action="store_false", dest="bar_values")
     support_parser.add_argument("--support-output-subdir", default="support")
     #######
+    survivor_stat_parser = subparsers.add_parser("survivor-stat", parents=[cli_logging_parser])
+    survivor_stat_parser.add_argument("rck_adj", type=argparse.FileType("rt"), default=sys.stdin)
+    survivor_stat_parser.add_argument("--separator", default="\t")
+    survivor_stat_parser.add_argument("--extra-separator", default=";")
+    survivor_stat_parser.add_argument("--sources-field", default="supporting_sources")
+    survivor_stat_parser.add_argument("--size-bins", type=str, default="1,100,200,300,400,500,750,1000,2000,5000,10000,50000,100000,500000")
+    survivor_stat_parser.add_argument("--size-extra-field", default="svlen")
+    survivor_stat_parser.add_argument("--size-extra-field-no-abs", action="store_false", dest="size_extra_field_abs")
+    survivor_stat_parser.add_argument("--size-extra-seq-field")
+    survivor_stat_parser.add_argument("-o", "--output", type=argparse.FileType("wt"), default=sys.stdout)
+    #######
+    complex_parser = subparsers.add_parser("complex-signatures", parents=[cli_logging_parser])
+    complex_parser.add_argument("rck_adj", nargs="?", type=argparse.FileType("rt"), default=sys.stdin)
+    complex_parser.add_argument("--separator", default="\t")
+    complex_parser.add_argument("--extra-separator", default=";")
+    complex_parser.add_argument("--pre-reciprocal", action="store_true", dest="pre_reciprocal")
+    complex_parser.add_argument("--pre-reciprocal-max-dist", type=int, default=50)
+    complex_parser.add_argument("--min-k", type=int, default=3)
+    complex_parser.add_argument("--output", "-o", type=argparse.FileType("wt"), default=sys.stdout)
+    complex_parser.add_argument("--output-separator", default="\t")
+    complex_parser.add_argument("--output-internal-separator", default=",")
+    #######
     args = parser.parse_args()
-    if args.vis:
+    # if args.vis
+    if args.command == "survivor-stat":
+        adjacencies = read_adjacencies_from_source(source=args.rck_adj, separator=args.separator, extra_separator=args.extra_separator)
+        bins = get_size_bins(bins_strs=args.size_bins.split(","))
+        tally = merged_source_tally(adjacencies=adjacencies, bins=bins, extra_sources_field=args.sources_field,
+                                    size_extra_field=args.size_extra_field, size_extra_field_abs=args.size_extra_field_abs,
+                                    size_extra_seq_field=args.size_extra_seq_field)
+        header_entries = ["bin"] + [";".join(entry) for entry in sorted(tally.keys())]
+        writer = csv.DictWriter(args.output, fieldnames=header_entries, delimiter=",")
+        writer.writeheader()
+        for lb, rb in zip([None] + bins, bins):
+            data = {"bin": "[{lb}-{rb})".format(lb=lb, rb=rb)}
+            for source in sorted(tally.keys()):
+                str_source = ";".join(source)
+                data[str_source] = tally[source].get(rb, 0)
+            writer.writerow(data)
+    elif args.command == "complex-signatures":
+        adjacencies = read_adjacencies_from_source(source=args.rck_adj, separator=args.separator, extra_separator=args.extra_separator)
+        if args.pre_reciprocal:
+            adjacencies = refined_adjacencies_reciprocal(novel_adjacencies=adjacencies, max_distance=args.pre_reciprocal_max_dist)
+        complex_rearrangements_signatures = get_complex_rearrangements_signatures(adjacencies=adjacencies)
+        complex_rearrangements_signatures = [crs for crs in complex_rearrangements_signatures if crs.k >= args.min_k]
+        write_complex_rearr_signature_groups_to_destination(destination=args.output, signatures=complex_rearrangements_signatures,
+                                                            separator=args.output_separator, internal_separator=args.output_internal_separator)
+    elif args.command == "cnt":
         import seaborn as sns
         import matplotlib.pyplot as plt
         sns.set(color_codes=True)
-    if args.command == "cnt":
         nas = read_adjacencies_from_source(source=args.rck_nas)
         use_annotations = args.ann
         bins = set()
@@ -229,6 +279,9 @@ def main():
             plt.show()
         plt.gcf()
     elif args.command == "lr":
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+        sns.set(color_codes=True)
         nas = read_adjacencies_from_source(source=args.rck_nas)
         reads_to_nas = defaultdict(list)
         for na in nas:
@@ -264,6 +317,9 @@ def main():
             plt.show()
         plt.gcf()
     elif args.command == "merged":
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+        sns.set(color_codes=True)
         nas = read_adjacencies_from_source(source=args.rck_nas)
         source_pattern = re.compile(args.origin_regex)
         source_groups_cnt = defaultdict(int)
@@ -342,6 +398,9 @@ def main():
         if args.vis_interactive:
             plt.show()
     elif args.command == "support":
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+        sns.set(color_codes=True)
         max_support = 30
         import statistics
         nas = read_adjacencies_from_source(source=args.rck_nas)

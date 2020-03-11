@@ -1,13 +1,13 @@
 {% set name = "RCK" %}
-{% set version = "1.0.0a3" %}
+{% set version = "1.1.0" %}
 
 package:
   name: "{{ name|lower }}"
   version: "{{ version }}"
 
 source:
-  url: https://files.pythonhosted.org/packages/44/12/8c662b2c6e1e0d2939ca95dec4154b786a900c453f4dc5c6757f8def2426/RCK-1.0.0a2.tar.gz
-  sha256: 64f6e7343416ab33b2b01988f14853ea55b173c9d563fbc18f473f78d4e5e413
+  url: https://files.pythonhosted.org/packages/fd/85/69c8ba6c6e80e9d9acbb40365601ee0632f8ce7c8b61e051249a8db70595/RCK-1.1.0.tar.gz
+  sha256: 522e7965be2eb3ed7089b37e05bb795846a7f78ec658815ad229779cd4874ca5
 
 build:
   number: 0
@@ -23,6 +23,7 @@ requirements:
     - pandas
     - gurobi
     - pip
+    - gffutils
     - python >=3.6
   run:
     - networkx >=2
@@ -33,6 +34,7 @@ requirements:
     - pandas
     - gurobi
     - pip
+    - gffutils
     - python >=3.6
 
 test:
@@ -50,7 +52,7 @@ test:
     - rck-adj-x2rck longranger --help # [not win]
     - rck-adj-x2rck naibr --help  # [not win]
     - rck-adj-x2rck manta --help  # [not win]
-    - rck-adj-x2rck grocsv --help # [not win]
+    - rck-adj-x2rck grocsvs --help # [not win]
     - rck-adj-x2rck delly --help  # [not win]
     - rck-adj-x2rck pbsv --help # [not win]
     - rck-adj-x2rck remixt --help # [not win]

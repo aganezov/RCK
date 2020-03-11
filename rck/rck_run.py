@@ -5,22 +5,26 @@ import os
 import re
 import shutil
 import sys
+from collections import defaultdict
 from copy import deepcopy
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 import rck
-from rck.utils.adj.process import refined_adjacencies_reciprocal
+from rck.utils.adj.process import refined_adjacencies_reciprocal, filter_adjacencies_by_chromosomal_regions
+from rck.utils.adj.adjacency_group_inference import infer_short_nas_labeling_groups
+from rck.utils.adj.adjacency_group_process import refined_labeling_groups, projected_groups
 from rck.core.io import read_adjacencies_from_file, write_acnt_to_file, get_logging_cli_parser, get_standard_logger_from_args, read_adjacency_groups_from_file, \
     read_segments_from_file, \
     extract_scnt_from_segments, extract_scnb_from_segments, read_scnb_from_file, get_full_path, write_scnt_to_file, EXTERNAL_NA_ID, FALSE_POSITIVE, remove_cn_data_from_segments, \
-    write_scnb_to_file, write_adjacencies_to_file, write_segments_to_file, remove_cn_data_from_adjacencies, read_positions_from_file, \
+    write_scnb_to_file, write_adjacencies_to_file, write_segments_to_file, write_adjacency_groups_to_file, remove_cn_data_from_adjacencies, read_positions_from_file, \
     write_positions_to_file, remove_cnb_data_from_segments
 from rck.core.process import positions_aligned, adj_groups_concur
 from rck.core.structures import get_segments_for_fragments_ids_dict, get_ref_telomeres_from_segments, get_ref_adjacencies_from_segments, SegmentCopyNumberBoundaries, refined_scnt, \
     refined_scnb, refined_scnt_with_adjacencies_and_telomeres, extract_spanned_extremities, SCNBoundariesStrategies, LengthSpreadRelationships, AdjacencyType, AdjacencyGroupType, \
-    Phasing, Haplotype, CNBoundaries, AdjacencyCopyNumberProfile, SegmentCopyNumberProfile
+    Phasing, Haplotype, CNBoundaries, AdjacencyCopyNumberProfile, SegmentCopyNumberProfile, Segment
 from rck.core.graph import construct_hiag_inflate_from_haploid_data, IntervalAdjacencyGraph
+from rck.utils.karyotype.analysis import adjacency_groups_labeling_violations
 
 
 def main():
@@ -96,8 +100,19 @@ def main():
     pre_group.add_argument("--pre-adj-reciprocal-include-ref", action="store_true", dest="pre_adj_reciprocal_include_ref")
     pre_group.add_argument("--pre-adj-reciprocal-max-distance", type=int, default=50)
     ###
+    pre_group.add_argument("--pre-no-adg", action="store_false", dest="do_pre_adg")
+    pre_group.add_argument("--pre-adg-sl-max-size", type=int, default=50000000)
+    pre_group.add_argument("--pre-adg-sl-allow-intermediate-same", action="store_true", dest="pre_adg_sl_allow_intermediate_same")
+    pre_group.add_argument("--pre-adg-sl-allow-intermediate-tra", action="store_true", dest="pre_adg_sl_allow_intermediate_tra")
+    pre_group.add_argument("--pre-adg-sl-no-inv-signatures", action="store_false", dest="pre_adg_sl_allow_inv_signature")
+    pre_group.add_argument("--pre-adg-sl-no-refine", action="store_false", dest="pre_adg_sl_refine")
+    pre_group.add_argument("--pre-adg-sl-fp", type=float, default=1)
+    pre_group.add_argument("--pre-adg-sl-gid-suffix", dest="pre_adg_sl_gid_suffix", default="rck-run-sL")
+    ###
     run_group = parser.add_argument_group()
     run_group.add_argument("--no-run", action="store_false", dest="do_run")
+    run_group.add_argument("--run-haploid", action="store_true", dest="run_haploid")
+    run_group.add_argument("--run-presolve-nas-threshold", type=int, default=5000)
     run_group.add_argument("--run-g-mip-gap", type=float, default=0.015)
     run_group.add_argument("--run-g-time-limit", type=int, default=28800)
     run_group.add_argument("--run-g-threads", type=int, default=4)
@@ -114,7 +129,7 @@ def main():
     output_group.add_argument("--o-scnt-extra-separator", default=";")
     output_group.add_argument("--o-acnt-separator", default="\t")
     output_group.add_argument("--o-acnt-extra-separator", default=";")
-    output_group.add_argument("--o-acnt-mix-novel-and-reference", action="store_true",)
+    output_group.add_argument("--o-acnt-mix-novel-and-reference", action="store_true", )
     ###
     post_group = parser.add_argument_group()
     post_group.add_argument("--post-check-all", action="store_true", dest="post_check_all")
@@ -124,16 +139,20 @@ def main():
     post_group.add_argument("--post-check-adj-groups", action="store_true", dest="post_check_adj_groups")
     post_group.add_argument("--post-check-adj-groups-m", action="store_true", dest="post_check_adj_groups_m")
     post_group.add_argument("--post-check-adj-groups-n", action="store_true", dest="post_check_adj_groups_n")
+    post_group.add_argument("--post-check-adj-groups-l", action="store_true", dest="post_check_adj_groups_l")
     post_group.add_argument("--post-check-nas-fp", action="store_true", dest="post_check_nas_fp")
     ###
     args = parser.parse_args()
 
-    from rck.core.ilp_gurobi import OptModelMultiClone, DEFAULT_GROUP_M_FP, SEGMENT_LENGTH_ATTRIBUTE
+    from rck.core.ilp_gurobi import OptModelMultiClone, DEFAULT_GROUP_M_FP, SEGMENT_LENGTH_ATTRIBUTE, DEFAULT_GROUP_N_FP, merge_variables_from_presolve
     import gurobi as g
     logger = get_standard_logger_from_args(args=args, program_name="RCK")
 
     workdir = args.workdir if args.workdir is not None else "RCK-{date}".format(date=str(datetime.date.today()))
     workdir_path = get_full_path(path=workdir)
+    if args.run_haploid:
+        logger.warning("Solving the problem as if the reference was haploid. "
+                       "This, while producing some results, may limit and/or obscure underlying structural variations in the analyzed cancer genome")
     logger.debug("Working directory is set as {workdir_path}".format(workdir_path=workdir_path))
 
     logger.debug("Creating working directory if does not exist")
@@ -270,6 +289,17 @@ def main():
         adjacency_groups = []
         logger.info("No information about adjacency groups was provided")
 
+    if args.do_preprocess and args.do_pre_adg:
+        logger.info("Inferring short NAs labeling adjacency groups (to disable use the --pre-no-adg flag)")
+        short_inf_labeling_adjacency_groups = infer_short_nas_labeling_groups(adjacencies=[a for a in input_adjacencies if a.adjacency_type == AdjacencyType.NOVEL],
+                                                                              gid_suffix=args.pre_adg_sl_gid_suffix, max_size=args.pre_adg_sl_max_size,
+                                                                              allow_intermediate_same=args.pre_adg_sl_allow_intermediate_same,
+                                                                              allow_intermediate_tra=args.pre_adg_sl_allow_intermediate_tra,
+                                                                              allow_inv_signatures=args.pre_adg_sl_allow_inv_signature)
+        logger.info("Inferred {cnt} short NAs labeling adjacency groups".format(cnt=len(short_inf_labeling_adjacency_groups)))
+        logger.info("Extending (if any) input adjacency group with the inferred ones. If any duplications are present, they will be taken care of during the refinement process")
+        adjacency_groups.extend(short_inf_labeling_adjacency_groups)
+
     fragments_file_path = None if args.fragments in (None, "") else get_full_path(path=args.fragments)
     if fragments_file_path is not None:
         logger.debug("Copying fragments file {fragments_file} to raw input directory {raw_input_dir}".format(fragments_file=fragments_file_path,
@@ -329,9 +359,10 @@ def main():
     segments_to_fragments = None
     try:
         segments_to_fragments = get_segments_for_fragments_ids_dict(segments=segments, fragments=fragments, allow_non_covered=False)
-    except Exception:
+    except Exception as e:
         logger.error("FRAGMENTS boundaries do not align with SEGMENTS boundaries; "
                      "having this problem at this point indicates that the preprocessing was turned off and the data in original input SCNT and --fragments is not aligned")
+        logger.error(e)
         exit(1)
     segments_positions = []
     for s in segments:
@@ -358,10 +389,6 @@ def main():
                      "having this problem at this time indicates that either the original --nas-groups has a group that is referring to the missing novel adjacency in NAS, "
                      "or the referred novel adjacency from NAS was removed during the preprocessing.")
         exit(1)
-    logger.debug("Populating adjacency groups")
-    adjacencies_by_external_ids = {adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased): adj for adj in input_adjacencies}
-    for ag in adjacency_groups:
-        ag.populate_adjacencies_via_ids(source=input_adjacencies, source_by_ids=adjacencies_by_external_ids)
 
     ########
     #
@@ -390,19 +417,46 @@ def main():
     write_segments_to_file(file_name=preprocessed_fragments_file, segments=fragments, extra=None)
 
     ########
-
     logger.debug("Extracting reference adjacencies from input segments")
     ref_adjacencies = get_ref_adjacencies_from_segments(segments=segments, assign_external_ids=True)
     logger.debug("A total of {cnt} reference unlabeled adjacencies are considered (labeled will be x2, except for X and Y chromosomes)".format(cnt=len(ref_adjacencies)))
     adjacencies = input_adjacencies + ref_adjacencies
     output_dir = os.path.join(workdir_path, "output")
-    logger.debug("Output directory is {output}".format(output=output_dir))
-    os.makedirs(output_dir, exist_ok=True)
+
+    iag = None
+    molecule_groups = [ag for ag in adjacency_groups if ag.group_type == AdjacencyGroupType.MOLECULE]
+    labeling_groups = [ag for ag in adjacency_groups if ag.group_type == AdjacencyGroupType.LABELING]
+    general_groups = [ag for ag in adjacency_groups if ag.group_type == AdjacencyGroupType.GENERAL]
+    logger.debug("A total of {cnt} molecule adjacency groups were obtained".format(cnt=len(molecule_groups)))
+    logger.debug("A total of {cnt} labeling adjacency groups were obtained".format(cnt=len(labeling_groups)))
+    logger.debug("A total of {cnt} general adjacency groups were obtained".format(cnt=len(general_groups)))
+    molecule_groups = projected_groups(groups=molecule_groups, adjacencies=adjacencies)
+    labeling_groups = projected_groups(groups=labeling_groups, adjacencies=adjacencies)
+    general_groups = projected_groups(groups=general_groups, adjacencies=adjacencies)
+    if len(labeling_groups) > 0:
+        logger.info("Refining input labeling adjacency groups")
+        logger.debug("Building (D)IAG, as reciprocality matters")
+        iag = IntervalAdjacencyGraph(segments=segments, adjacencies=adjacencies)
+        iag.build_graph()
+        labeling_groups = refined_labeling_groups(adj_groups=labeling_groups, iag=iag, adjacencies=adjacencies, gid_suffix="rck-run-L", retain_source_gids=True)
+        logger.debug("A total of {cnt} labeling adjacency groups were obtained after refinement".format(cnt=len(labeling_groups)))
+    adjacency_groups = molecule_groups + labeling_groups + general_groups
+    logger.debug("Populating adjacency groups")
+    adjacencies_by_external_ids = {adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased): adj for adj in input_adjacencies}
+    for ag in adjacency_groups:
+        ag.populate_adjacencies_via_ids(source=input_adjacencies, source_by_ids=adjacencies_by_external_ids)
+    preprocessed_adjacencies_group_file = os.path.join(preprocessed_input_dir_path, "rck.ag.tsv")
+    if len(adjacency_groups) > 0:
+        logger.info("Writing (preprocessed) adjacency groups to {file}".format(file=preprocessed_adjacencies_group_file))
+        write_adjacency_groups_to_file(file_name=preprocessed_adjacencies_group_file, adjacency_groups=adjacency_groups)
+    else:
+        logger.debug("No adjacencies groups information is present. Nothing to write.")
 
     if args.telomere_reciprocal:
         logger.info("Reciprocal telomere positions are specified via --telomere-positions-reciprocal. Extracting.")
-        iag = IntervalAdjacencyGraph(segments=segments, adjacencies=adjacencies)
-        iag.build_graph()
+        if iag is None:
+            iag = IntervalAdjacencyGraph(segments=segments, adjacencies=adjacencies)
+            iag.build_graph()
         for u, v in iag.ref_adjacency_edges(data=False):
             if u in telomeres and v not in telomeres:
                 telomeres.append(v)
@@ -424,12 +478,109 @@ def main():
         logger.info("A --no-run flag was set. Not performing the inference.")
         exit(0)
 
+    if len(input_adjacencies) > args.run_presolve_nas_threshold:
+        presolved_vars = {}
+        logger.info("Performing per chromosomal pre-sovling")
+        presolve_dir = os.path.join(workdir_path, "_presolve")
+        os.makedirs(presolve_dir, exist_ok=True)
+        logger.info("Results and logs will be stored in {file} directory".format(file=presolve_dir))
+        segments_by_chrs = defaultdict(list)
+        logger.debug("Computing translocations fraction out of the input adjacencies")
+        translocations = [adj for adj in adjacencies if adj.position1.chromosome != adj.position2.chromosome]
+        translocations_fraction = len(translocations) / len(input_adjacencies)
+        logger.debug("Translocation fraction is {:0.2f}".format(translocations_fraction))
+        presolve_overall_fp = max(0.0, overall_nas_fp - translocations_fraction)
+        for segment in segments:
+            segments_by_chrs[segment.chromosome].append(segment)
+        for chr_name in segments_by_chrs.keys():
+            logger.info("Presolving for chr {chr_name}".format(chr_name=chr_name))
+            segments_by_chrs[chr_name] = sorted(segments_by_chrs[chr_name], key=lambda s: (s.start_coordinate, s.end_coordinate))
+            chr_segments = segments_by_chrs[chr_name]
+            logger.debug("A total of {cnt} segments are on chromosome {chr_name}".format(cnt=len(chr_segments), chr_name=chr_name))
+            chr_adjacencies = list(filter_adjacencies_by_chromosomal_regions(adjacencies=adjacencies,
+                                                                             include=[Segment.from_chromosome_coordinates(chromosome=chr_name, start=-1, end=1000000000)]))
+            logger.debug("A total of {cnt} adjacencies (both reference and novel) are on chromosome {chr_name}".format(cnt=len(chr_adjacencies), chr_name=chr_name))
+            chr_groups = projected_groups(groups=adjacency_groups, adjacencies=chr_adjacencies)
+            logger.debug("A total of {cnt} adjacency groups are on chromosome {chr_name}".format(cnt=len(chr_groups), chr_name=chr_name))
+            gurobi_log_path = os.path.join(presolve_dir, "{chr_name}.gurobi.log".format(chr_name=chr_name))
+            logger.info("Gurobi log will be stored in {log_path}".format(log_path=gurobi_log_path))
+            extra = {DEFAULT_GROUP_M_FP: args.run_group_m_default_fp,
+                     DEFAULT_GROUP_N_FP: args.run_group_n_default_fp,
+                     SEGMENT_LENGTH_ATTRIBUTE: args.run_segment_length_attr}
+            logger.debug("Gurobi ILP extra is {extra}".format(extra=str(extra)))
+            logger.info("Setting up Gurobi ILP model (includes construction of the IAG)")
+            segments_ids = {s.stable_id_non_hap for s in chr_segments}
+            chr_segments_to_fragments = {sid: fid for sid, fid in segments_to_fragments.items() if sid in segments_ids}
+            ilp_model = OptModelMultiClone(hapl_segments=chr_segments,
+                                           hapl_adjacencies=chr_adjacencies,
+                                           scnt=scnt,
+                                           hapl_telomeres=telomeres,
+                                           hapl_segments_to_fragments=chr_segments_to_fragments,
+                                           hapl_adjacencies_groups=chr_groups,
+                                           scnb=scnb,
+                                           solve_as_haploid=args.run_haploid,
+                                           hapl_nov_adjacencies_fp=presolve_overall_fp,
+                                           extra=extra)
+            logger.debug("Building variables and constraints")
+            ilp_model.build_gurobi_model()
+            logger.debug("Setting gurobi parameters")
+            ilp_model.gm.setParam("MIPGap", args.run_g_mip_gap)
+            ilp_model.gm.setParam("MIPGapAbs", args.run_g_mip_gap)
+            ilp_model.gm.setParam("MIPFocus", args.run_g_mip_focus)
+            ilp_model.gm.setParam("LogFile", gurobi_log_path)
+            ilp_model.gm.setParam("TimeLimit", args.run_g_time_limit)
+            ilp_model.gm.setParam("Threads", args.run_g_threads)
+            if args.run_haploid:
+                logger.warning("Problem is being solved as if the underlying reference is haploid.")
+            logger.info("Starting Gurobi to solve the optimization problem")
+            ilp_model.solve_model()
+            logger.info("Gurobi model solving has ended")
+            status = ilp_model.gm.status
+            solution_cnt = ilp_model.gm.solcount
+            if status == g.GRB.Status.INFEASIBLE:
+                logger.error("Constructed model was infeasible to solve. This usually happens because of the tight segment copy number boundaries.")
+                logger.error("\t Try more flexible segment copy number boundaries or try increasing allowed Novel adjacencies False Positive value.")
+                logger.info("Gurobi computes the IIS")
+                ilp_model.gm.computeIIS()
+                ilp_path = os.path.join(presolve_dir, "{chr_name}.model.ilp".format(chr_name=chr_name))
+                logger.info("Writing down Gurobi IIS to {file}".format(file=ilp_path))
+                ilp_model.gm.write(ilp_path)
+                logger.error("Inference was unsuccessful.")
+                continue
+            allowed_statuses = [g.GRB.Status.OPTIMAL, g.GRB.Status.TIME_LIMIT]
+            if args.run_g_allow_interrupted:
+                allowed_statuses.append(g.GRB.Status.INTERRUPTED)
+            if status not in allowed_statuses:
+                logger.error("Gurobi finished with status {status}".format(status=status))
+                logger.error("Inference was unsuccessful")
+                continue
+            if solution_cnt == 0:
+                logger.error("Inference was unsuccessful")
+                continue
+            logger.info("Extracting inferred diploid segemnt and adjacency copy number data")
+            chr_scnt = ilp_model.get_scnt_from_model()
+            chr_acnt = ilp_model.get_acnt_from_model()
+            presolved_vars = merge_variables_from_presolve(ilp_model.variables, result=presolved_vars)
+            logger.info("Writing extracted data to presolve dir")
+            chr_scnt_file = os.path.join(presolve_dir, "{chr_name}.rck.scnt.tsv".format(chr_name=chr_name))
+            logger.info("Writing presolved segment copy number data for chr {chr_name} to {file}".format(chr_name=chr_name, file=chr_scnt_file))
+            write_scnt_to_file(file_name=chr_scnt_file, segments=chr_segments, scnt=chr_scnt)
+            chr_acnt_file = os.path.join(presolve_dir, "{chr_name}.rck.acnt.tsv".format(chr_name=chr_name))
+            logger.info("Writing presolved adjacency copy number data for chr {chr_name} to {file}".format(chr_name=chr_name, file=chr_acnt_file))
+            write_acnt_to_file(file_name=chr_acnt_file, adjacencies=chr_adjacencies, acnt=chr_acnt)
+    else:
+        presolved_vars = None
+
     gurobi_log_path = os.path.join(output_dir, "gurobi.log")
     logger.info("Gurobi log will be stored in {log_path}".format(log_path=gurobi_log_path))
     extra = {DEFAULT_GROUP_M_FP: args.run_group_m_default_fp,
+             DEFAULT_GROUP_N_FP: args.run_group_n_default_fp,
              SEGMENT_LENGTH_ATTRIBUTE: args.run_segment_length_attr}
     logger.debug("Gurobi ILP extra is {extra}".format(extra=str(extra)))
     logger.info("Setting up Gurobi ILP model (includes construction of the IAG)")
+    # if presolved_vars is not None:
+    #     logger.info("Merging results from presolved chromosome subproblems to create a starting vector for the overall problem")
+    #     presolved_vars = merge_variables_from_presolve(*presolved_vars)
     ilp_model = OptModelMultiClone(hapl_segments=segments,
                                    hapl_adjacencies=adjacencies,
                                    scnt=scnt,
@@ -438,6 +589,8 @@ def main():
                                    hapl_adjacencies_groups=adjacency_groups,
                                    scnb=scnb,
                                    hapl_nov_adjacencies_fp=overall_nas_fp,
+                                   starting_vars=presolved_vars,
+                                   solve_as_haploid=args.run_haploid,
                                    extra=extra)
     logger.debug("Building variables and constraints")
     ilp_model.build_gurobi_model()
@@ -449,6 +602,8 @@ def main():
     ilp_model.gm.setParam("TimeLimit", args.run_g_time_limit)
     ilp_model.gm.setParam("Threads", args.run_g_threads)
     logger.info("Starting Gurobi to solve the optimization problem")
+    if args.run_haploid:
+        logger.warning("Problem is being solved as if the underlying reference is haploid.")
     ilp_model.solve_model()
 
     logger.info("Gurobi model solving has ended")
@@ -475,7 +630,14 @@ def main():
         logger.error("Inference was unsuccessful")
         exit(1)
 
+    ilp_model.gm.write(os.path.join(output_dir, "gurobi.lp"))
+    with open(os.path.join(output_dir, "gurobi.sol"), "wt") as destination:
+        for var in ilp_model.gm.getVars():
+            print(var.VarName, var.X, file=destination)
+
     logger.info("Gurobi finished execution with status {status}".format(status=status))
+    if args.run_haploid:
+        logger.warning("Problem has been solved as if the underlying reference is haploid. Inferred copy number data is not truly diploid.")
     logger.info("Extracting inferred diploid segment copy number data")
     scnt = ilp_model.get_scnt_from_model()
     logger.info("Extracting inferred diploid adjacency copy number data")
@@ -486,6 +648,7 @@ def main():
     scnt_base_name = re.sub("\.+", ".", scnt_base_name)
     scnt_file_path = os.path.join(output_dir, scnt_base_name)
     logger.info("Writing inferred diploid segment copy number data to {file}".format(file=scnt_file_path))
+    remove_cn_data_from_segments(segments=segments)
     write_scnt_to_file(file_name=scnt_file_path, segments=segments, scnt=scnt)
     acnt_base_name = args.out_prefix_name + "rck.acnt.tsv"
     if acnt_base_name.startswith("."):
@@ -493,6 +656,7 @@ def main():
     acnt_base_name = re.sub("\.+", ".", acnt_base_name)
     acnt_file_path = os.path.join(output_dir, acnt_base_name)
     logger.info("Writing inferred diploid adjacency copy number data to {file}".format(file=acnt_file_path))
+    remove_cn_data_from_adjacencies(adjacencies=adjacencies)
     write_acnt_to_file(file_name=acnt_file_path, acnt=acnt, adjacencies=adjacencies, output_reference=True, mix_reference_and_novel=args.o_acnt_mix_novel_and_reference)
 
     #########
@@ -516,6 +680,8 @@ def main():
                 lower_b = scnbp.get_cnb(sid=sid, hap=Haplotype.B, boundary_type=CNBoundaries.LOWER)
                 upper_a = scnbp.get_cnb(sid=sid, hap=Haplotype.A, boundary_type=CNBoundaries.UPPER)
                 upper_b = scnbp.get_cnb(sid=sid, hap=Haplotype.B, boundary_type=CNBoundaries.UPPER)
+                if args.run_haploid:
+                    lower_b, upper_b = 0, 0
                 if sync_indicator == 1:
                     if (not lower_a <= cna <= upper_a) or (not lower_b <= cnb <= upper_b):
                         problems = True
@@ -608,7 +774,7 @@ def main():
             input_hapl_telomers_ids = {p.stable_id_non_hap for p in telomeres}
             if inferred_hapl_telomeres_ids > input_hapl_telomers_ids:
                 logger.error("Something went WRONG! Following segments extremities, while not specified specified as possible telomere sites were inferred as such.")
-                logger.error(",".join(map(str, sorted(input_hapl_telomers_ids - input_hapl_telomers_ids))))
+                logger.error(",".join(map(str, sorted(inferred_hapl_telomeres_ids - input_hapl_telomers_ids))))
             else:
                 logger.info("Everything is OK! in clone {clone_id} all extremities have non-negative copy number excess, and inferred telomere sites concur with the input"
                             "".format(clone_id=clone_id))
@@ -639,7 +805,44 @@ def main():
         if molecule_groups_fine_cnt == len(molecule_groups):
             logger.info("Everything is OK for all {good}/{all} molecule adjacency groups.".format(good=molecule_groups_fine_cnt, all=len(molecule_groups)))
         else:
-            logger.error("Something went WRONG! In some molecule adjacency groups (see above) not a single clone has <= than the input FP of.")
+            logger.error("Something went WRONG! In some molecule adjacency groups (see above) not a single clone has <= than the input FP.")
+
+    if args.post_check_all or args.post_check_adj_groups or args.post_check_adj_groups_n:
+        logger.info("Performing post-inference check on adjacency groups (general type)")
+        general_groups = [ag for ag in adjacency_groups if ag.group_type == AdjacencyGroupType.GENERAL]
+        general_groups_fine_cnt = 0
+        logger.info("There were {cnt} general adjacency groups in the input.".format(cnt=len(general_groups)))
+        for group in general_groups:
+            group_fp = group.extra.get(FALSE_POSITIVE, extra[DEFAULT_GROUP_N_FP])
+            total_present = set()
+            for clone_id in clone_ids:
+                acnp = acnt[clone_id]
+                clone_specific = acnp.haploid_adjacencies_present(adjacencies=group.adjacencies)
+                for adjacency in clone_specific:
+                    total_present.add(adjacency.stable_id_non_phased)
+            inferred_fp = 1 - (len(total_present) * 1.0 / len(group.adjacencies_ids))
+            if inferred_fp > group_fp:
+                logger.error("Something went wrong! In Adjacency Group {gid} inferred FP is {inferred:0.4f}, while input maximum FP was {group_fp:0.4f}."
+                             "".format(gid=group.gid, inferred=inferred_fp, group_fp=group_fp))
+            else:
+                logger.debug("Group {gid} is fine (inferred FP is {inferred:0.4f}, with the input maximum FP being {group_fp:0.4f}"
+                             "".format(gid=group.gid, inferred=inferred_fp, group_fp=group_fp))
+                general_groups_fine_cnt += 1
+        if general_groups_fine_cnt == len(general_groups):
+            logger.info("Everything is OK for all {good}/{all} general adjacency groups.".format(good=general_groups_fine_cnt, all=len(general_groups)))
+        else:
+            logger.error("Something went WRONG! In some general adjacency groups (see above) inferred FP was greater then the maximum input FP.")
+
+    if args.post_check_all or args.post_check_adj_groups or args.post_check_adj_groups_l:
+        logger.info("Performing post-inference check on adjacency groups (labeling type)")
+        labeling_groups = [ag for ag in adjacency_groups if ag.group_type == AdjacencyGroupType.LABELING]
+        logger.info("There were {cnt} labeling adjacency groups in the input.".format(cnt=len(labeling_groups)))
+        labeling_groups_violations = adjacency_groups_labeling_violations(groups=labeling_groups, acnt=acnt)
+        if len(labeling_groups_violations) == 0:
+            logger.info("Everything is OK for all {good}/{all} labeling adjacency groups.".format(good=len(labeling_groups) - len(labeling_groups_violations), all=len(labeling_groups)))
+        else:
+            logger.error(", ".join(str(ag.gid) for ag in labeling_groups_violations))
+            logger.error("Something went WRONG! In some labeling adjacency groups (see above) inferred FP was greater then the maximum input FP.")
 
     if args.post_check_all or args.post_check_nas_fp:
         logger.info("Performing post-inference check on overall novel adjacencies false positive parameter")

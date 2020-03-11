@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import sys
 import os
 
@@ -9,8 +10,11 @@ for _ in range(current_file_level):
 sys.path.append(current_dir)
 
 from rck.core.io import get_logging_cli_parser, get_standard_logger_from_args, get_full_path, read_scnt_from_file, write_scnt_to_file, \
-    write_scnt_to_destination, read_scnt_from_source
+    write_scnt_to_destination, read_scnt_from_source, stream_segments_from_source, write_segments_to_destination
 from rck.core.structures import aligned_scnts, refined_scnt, cn_distance_inter_scnt
+from rck.utils.adj.process import KEEP, REMOVE, iter_over_string_entries_from_source, get_extra_field_regexes
+from rck.utils.scn.process import iter_haploid_segments, filter_segments_by_chromosomal_regions, filter_segments_by_extra, filter_segments_by_size
+from rck.utils.adj.convert import get_chrs_regions_string_list_from_file, parse_segment_chr_region, get_chrs_regions_string_lists_from_source
 
 
 def main():
@@ -46,6 +50,33 @@ def main():
     distance_parser.add_argument("--scnt2-extra-separator", default=";")
     distance_parser.add_argument("--clone-ids", default=None)
     distance_parser.add_argument("--output", "-o", type=argparse.FileType("wt"), default=sys.stdout)
+    ###
+    filter_parser = subparsers.add_parser("filter", parents=[cli_logging_parser])
+    filter_parser.add_argument("scnt", type=argparse.FileType("rt"), default=sys.stdin)
+    filter_parser.add_argument("--separator", default="\t")
+    filter_parser.add_argument("--extra-separator", default=";")
+    filter_parser.add_argument("--o-extra-fields", default="all")
+    filter_parser.add_argument("--chrs-include", action="append", nargs=1)
+    filter_parser.add_argument("--chrs-include-file", type=argparse.FileType("rt"))
+    filter_parser.add_argument("--chrs-include-no-full", action="store_false", dest="include_full")
+    filter_parser.add_argument("--chrs-exclude", action="append", nargs=1)
+    filter_parser.add_argument("--chrs-exclude-file", type=argparse.FileType("rt"))
+    filter_parser.add_argument("--chrs-exclude-full", action="store_true", dest="exclude_full")
+    filter_parser.add_argument("--keep-extra-field-regex", nargs="+", default=None)
+    filter_parser.add_argument("--keep-extra-field-regex-file", type=argparse.FileType("rt"), default=None)
+    filter_parser.add_argument("--keep-extra-field-missing-strategy", choices=[KEEP, REMOVE], default=KEEP)
+    filter_parser.add_argument("--remove-extra-field-regex", nargs="+", default=None)
+    filter_parser.add_argument("--remove-extra-field-regex-file", type=argparse.FileType("rt"), default=None)
+    filter_parser.add_argument("--remove-extra-field-missing-strategy", choices=[KEEP, REMOVE], default=KEEP)
+    filter_parser.add_argument("--min-size", type=int, default=0)
+    filter_parser.add_argument("--max-size", type=int, default=1000000000)
+    filter_parser.add_argument("-o", "--output", type=argparse.FileType("wt"), default=sys.stdout)
+    ###
+    haploid_parser = subparsers.add_parser("haploid", parents=[cli_logging_parser])
+    haploid_parser.add_argument("scnt", type=argparse.FileType("rt"), default=sys.stdin)
+    haploid_parser.add_argument("--separator", default="\t")
+    haploid_parser.add_argument("--extra-separator", default=";")
+    haploid_parser.add_argument("--output", "-o", type=argparse.FileType("wt"), default=sys.stdout)
     ###
     args = parser.parse_args()
     logger = get_standard_logger_from_args(args=args, program_name="RCK-UTILS-SCNT-process")
@@ -106,6 +137,48 @@ def main():
             scnt_path = os.path.join(output_dir, new_name + "rck.scnt.tsv")
             logger.debug("Writing aligned SCNT {scnt_name} to {file}".format(scnt_name=name, file=scnt_path))
             write_scnt_to_file(file_name=scnt_path, segments=segments, scnt=scnt, separator=args.separator)
+    elif args.command == "filter":
+        logger.info("Filtering input segments from following sources {sources}".format(sources=args.scnt))
+        segments = stream_segments_from_source(source=args.scnt, separator=args.separator, extra_separator=args.extra_separator)
+        include_chrs_regions_strings = []
+        exclude_chrs_regions_strings = []
+        if args.chrs_include is not None:
+            for chrs_lists in args.chrs_include:
+                for chrs_list in chrs_lists:
+                    for chr_name in chrs_list.split(","):
+                        include_chrs_regions_strings.append(chr_name)
+        if args.chrs_include_file is not None:
+            for chr_name in get_chrs_regions_string_lists_from_source(source=args.chrs_include_file):
+                include_chrs_regions_strings.append(chr_name)
+        if args.chrs_exclude is not None:
+            for chrs_lists in args.chrs_exclude:
+                for chrs_list in chrs_lists:
+                    for chr_name in chrs_list.split(","):
+                        exclude_chrs_regions_strings.append(chr_name)
+        if args.chrs_exclude_file is not None:
+            for chr_name in get_chrs_regions_string_list_from_file(file_name=args.chrs_exclude_file):
+                exclude_chrs_regions_strings.append(chr_name)
+        include_regions = [parse_segment_chr_region(string) for string in include_chrs_regions_strings]
+        exclude_regions = [parse_segment_chr_region(string) for string in exclude_chrs_regions_strings]
+        segments = filter_segments_by_chromosomal_regions(segments=segments, include=include_regions, exclude=exclude_regions,
+                                                          include_full=args.include_full, exclude_full=args.exclude_full)
+        keep_extra_field_entries = args.keep_extra_field_regex if args.keep_extra_field_regex is not None else []
+        if args.keep_extra_field_regex_file is not None:
+            keep_extra_field_entries.extend(list(iter_over_string_entries_from_source(source=args.keep_extra_field_regex_file)))
+        remove_extra_field_entries = args.remove_extra_field_regex if args.remove_extra_field_regex is not None else []
+        if args.remove_extra_field_regex_file is not None:
+            remove_extra_field_entries.extend(list(iter_over_string_entries_from_source(source=args.remove_extra_field_regex_file)))
+        keep_extra_field = get_extra_field_regexes(string_entries=keep_extra_field_entries)
+        remove_extra_field = get_extra_field_regexes(string_entries=remove_extra_field_entries)
+        segments = filter_segments_by_extra(segments=segments, keep_extra_field=keep_extra_field, keep_extra_field_missing_strategy=args.keep_extra_field_missing_strategy,
+                                            remove_extra_field=remove_extra_field, remove_extra_field_missing_strategy=args.remove_extra_field_missing_strategy)
+        segments = filter_segments_by_size(segments=segments, min_size=args.min_size, max_size=args.max_size)
+        write_segments_to_destination(destination=args.output, segments=segments)
+
+    elif args.command == "haploid":
+        segments = stream_segments_from_source(source=args.scnt, separator=args.separator, extra_separator=args.extra_separator)
+        haploid_segments = iter_haploid_segments(segments=segments, copy=False)
+        write_segments_to_destination(destination=args.output, segments=haploid_segments)
     elif args.command == "distance":
         clone_ids = args.clone_ids
         if args.clone_ids is not None:
@@ -127,4 +200,4 @@ def main():
 
 
 if __name__ == "__main__":
-    pass
+    main()

@@ -3,6 +3,7 @@ import argparse
 import sys
 import os
 
+
 current_file_level = 3
 current_dir = os.path.dirname(os.path.realpath(__file__))
 for _ in range(current_file_level):
@@ -10,7 +11,7 @@ for _ in range(current_file_level):
 sys.path.append(current_dir)
 
 import rck
-from rck.core.io import get_logging_cli_parser, get_standard_logger_from_args
+from rck.core.io import get_logging_cli_parser, get_standard_logger_from_args, read_adjacencies_from_file, get_full_path
 from rck.utils.adj.convert import *
 from rck.utils.adj.process import filter_adjacencies_by_chromosomal_regions, get_shared_nas_parser, processed_gundem2015_adjacencies, get_chromosome_strip_parser
 
@@ -48,7 +49,7 @@ def main():
     sniffles_parser.add_argument("--id-suffix", dest="id_suffix", default="sniffles")
     sniffles_parser.add_argument("sniffles_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
-    grocsv = subparsers.add_parser("grocsv", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert GROCSVS VCF SV calls into RCK NAS format")
+    grocsv = subparsers.add_parser("grocsvs", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert GROCSVS VCF SV calls into RCK NAS format")
     grocsv.add_argument("--id-suffix", dest="id_suffix", default="grocsv")
     grocsv.add_argument("grocsv_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
     grocsv.add_argument("--samples")
@@ -62,6 +63,7 @@ def main():
     ####
     pbsv = subparsers.add_parser("pbsv", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert PBSV VCF SV calls into RCK NAS format")
     pbsv.add_argument("--id-suffix", dest="id_suffix", default="pbsv")
+    pbsv.add_argument("--sample", default=None)
     pbsv.add_argument("pbsv_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
     remixt = subparsers.add_parser("remixt", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert ReMixT Novel adjacencies calls into RCK format")
@@ -81,6 +83,29 @@ def main():
     gundem2015_parser.add_argument("--samples", nargs="+", required=True)
     gundem2015_parser.add_argument("--min-sample-cnt", type=int, default=1)
     gundem2015_parser.add_argument("--no-flip-second-strand", action="store_false", dest="flip_second_strand")
+    ####
+    survivor_parser = subparsers.add_parser("survivor", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Covert SURVIVOR SV merging results into RCK format")
+    survivor_parser.add_argument("--id-suffix", dest="id_suffix", default="survivor")
+    survivor_parser.add_argument("survivor_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
+    survivor_parser.add_argument("--samples")
+    survivor_parser.add_argument("--samples-sources")
+    survivor_parser.add_argument("--samples-separator", default="\t")
+    survivor_parser.add_argument("--samples-extra-separator", default=";")
+    survivor_parser.add_argument("--samples-suffix-extra", action="store_true", dest="suffix_sample_extra")
+    survivor_parser.add_argument("--survivor-prefix", default="")
+    ####
+    svaba_parser = subparsers.add_parser("svaba", parents=[shared_parser, cli_logging_parser, chr_strip_parser], help="Convert SvABA SV calls into RCK format")
+    svaba_parser.add_argument("--id-suffix", dest="id_suffix", default="svaba")
+    svaba_parser.add_argument("svaba_vcf_file", type=argparse.FileType("rt"), default=sys.stdin)
+    svaba_parser.add_argument("--i-type", choices=["indel", "sv"], default="sv")
+    svaba_parser.add_argument("--samples")
+    svaba_parser.add_argument("--samples-all-any", choices=["all", "any"], default="any")
+    svaba_parser.add_argument("--samples-only", action="store_true", dest="samples_only")
+    ####
+    breakdancer_parser = subparsers.add_parser("breakdancer", parents=[shared_parser, cli_logging_parser, chr_strip_parser],
+                                               help="Convert Breakdancer(-max) SV calls into RCK format")
+    breakdancer_parser.add_argument("--id-suffix", dest="id_suffix", default="breakdancer")
+    breakdancer_parser.add_argument("breakdancer_file", type=argparse.FileType("rt"), default=sys.stdin)
     ####
     args = parser.parse_args()
     setup = build_setup(args=args)
@@ -120,13 +145,13 @@ def main():
         sniffles_vcf_records = get_vcf_records_from_source(source=args.sniffles_vcf_file)
         logger.info("Converting Sniffles VCF records to RCK adjacencies")
         nas = get_nas_from_sniffles_vcf_records(sniffles_vcf_records=sniffles_vcf_records, setup=setup)
-    elif args.command == "grocsv":
+    elif args.command == "grocsvs":
         logger.info("Starting converting adjacencies from GROCSVS records to that of RCK")
         logger.info("Reading GROCSVS VCF records from {file}".format(file=args.grocsv_vcf_file))
         samples = args.samples.split(",") if args.samples is not None else args.samples
         grocsv_vcf_records = get_vcf_records_from_source(source=args.grocsv_vcf_file)
         logger.info("Converting GROCSVS VCF records to RCK adjacencies")
-        nas = get_nas_from_grocsv_vcf_records(grocsv_vcf_records=grocsv_vcf_records, setup=setup, samples=samples, sample_all_any=args.samples_all_any,
+        nas = get_nas_from_grocsv_vcf_records(grocsv_vcf_records=grocsv_vcf_records, setup=setup, samples=samples, samples_all_any=args.samples_all_any,
                                               samples_only=args.samples_only)
     elif args.command == "delly":
         logger.info("Starting converting adjacencies from Delly records to that of RCK")
@@ -146,7 +171,7 @@ def main():
         logger.info("Reading PBSV VCF records from {file}".format(file=args.pbsv_vcf_file))
         pbsv_vcf_records = get_vcf_records_from_source(source=args.pbsv_vcf_file)
         logger.info("Converting PBSV VCF records to RCK adjacencies")
-        nas = get_nas_from_pbsv_vcf_records(pbsv_vcf_records=pbsv_vcf_records, setup=setup)
+        nas = get_nas_from_pbsv_vcf_records(pbsv_vcf_records=pbsv_vcf_records, setup=setup, sample=args.sample)
     elif args.command == "gundem2015":
         logger.info("Starting converting adjacencies from Gundem et al 2015 (BRASS2???) to that of RCK")
         logger.info("Reading Gundem 2015 et al (BRASS???) records from {file}".format(file=args.gundem2015_file))
@@ -159,6 +184,41 @@ def main():
         clone_ids = args.clone_ids.split(",")
         nas = get_nas_from_remixt_source(source=args.remixt_file, setup=setup, separator=args.i_separator, clone_ids=clone_ids, skip_absent=args.skip_absent,
                                          remixt_na_correction=args.remixt_correction)
+    elif args.command == "survivor":
+        sample_names = args.samples.split(",") if args.samples is not None else []
+        sample_sources = args.samples_sources.split(",") if args.samples_sources is not None else []
+        if len(sample_names) != len(sample_sources):
+            logger.warning("Provided samples' length {sample_cnt} ({samples}) does not match that of samples source length {sample_sources_cnt} (sample_sources)"
+                           "".format(sample_cnt=len(sample_names), samples=",".join(sample_names), sample_sources_cnt=len(sample_sources),
+                                     sample_sources=",".join(sample_sources)))
+        logger.info("Starting converting adjacencies from SURVIVOR to that of RCK")
+        logger.info("Reading SURVIVOR records from {file}".format(file=args.survivor_vcf_file))
+        survivor_vcf_records = get_vcf_records_from_source(source=args.survivor_vcf_file)
+        logger.debug("Reading source-samples adjacencies (in RCK format)")
+        adjacencies_by_ids_by_sample_name = {}
+        for sample_name, sample_source in zip(sample_names, sample_sources):
+            try:
+                file_name = get_full_path(sample_source)
+                adjacencies = read_adjacencies_from_file(file_name=file_name, separator=args.samples_separator, extra_separator=args.samples_extra_separator)
+                adjacencies_by_ids = {adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased): adj for adj in adjacencies}
+                adjacencies_by_ids_by_sample_name[sample_name] = adjacencies_by_ids
+            except IOError:
+                logger.warning("Unable to reader source adjacency information from {source}".format(source=sample_source))
+        logger.info("Converting SURVIVOR VCF records from {file}".format(file=args.survivor_vcf_file))
+        nas = get_nas_from_survivor_vcf_records(survivor_vcf_records=survivor_vcf_records, setup=setup, adjacencies_by_ids_by_sample_name=adjacencies_by_ids_by_sample_name,
+                                                suffix_sample_extra=args.suffix_sample_extra, survivor_prefix=args.survivor_prefix)
+    elif args.command == "svaba":
+        logger.info("Starting converting adjacencies from SvABA to RCK")
+        logger.info("Reading SvABA VCF records from {file}".format(file=args.svaba_vcf_file))
+        svaba_vcf_records = get_vcf_records_from_source(source=args.svaba_vcf_file)
+        logger.info("Converting SvABA VCF records to RCK adjacencies")
+        samples = args.samples.split(",") if args.samples is not None else args.samples
+        nas = get_nas_from_svaba_vcf_records(svaba_vcf_records=svaba_vcf_records, source_type=args.i_type, setup=setup, samples=samples, samples_all_any=args.samples_all_any,
+                                             samples_only=args.samples_only)
+    elif args.command == "breakdancer":
+        logger.info("Starting converting adjacencies from Breakdancer(-max) to RCK")
+        logger.info("Reading and converting Breakdancer(-max) records from {file}".format(file=args.breakdancer_file))
+        nas = get_nas_from_breakdancer_source(source=args.breakdancer_file, setup=setup)
     logger.info("A total of {cnt} adjacencies were obtained.".format(cnt=len(nas)))
     logger.debug("Output extra fields were identified as {o_extra}".format(o_extra=",".join(extra)))
     include_chrs_regions_strings = []

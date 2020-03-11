@@ -10,10 +10,13 @@ import os
 from collections import defaultdict
 from copy import deepcopy
 from enum import Enum
+from typing import Iterable
 
+from rck.core.graph import IntervalAdjacencyGraph
 from rck.core.structures import AdjacencyCopyNumberProfile, AdjacencyGroup, CNBoundaries, SegmentCopyNumberBoundaries, AdjacencyGroupType
 from rck.core.structures import SegmentCopyNumberProfile, Haplotype, AdjacencyType, Phasing
 from rck.core.structures import Position, Strand, Adjacency, Segment
+from rck.utils.adj.analysis import ComplexRearrSignature
 
 csv.field_size_limit(sys.maxsize)
 
@@ -330,6 +333,16 @@ def write_segments_to_file(file_name, segments, separator="\t", extra="all", ext
                                       extra=extra, extra_separator=extra_separator, extra_fill=extra_fill, sort_segments=sort_segments)
 
 
+def stringify_segment_cn_entry(entry):
+    result = {}
+    for clone_id in entry.keys():
+        clone_specific_entries = {}
+        for haplotype in entry[clone_id]:
+            clone_specific_entries[str(haplotype)] = entry[clone_id][haplotype]
+        result[clone_id] = clone_specific_entries
+    return str(result)
+
+
 def write_segments_to_destination(destination, segments, separator="\t", extra="all", extra_separator=";", extra_fill="", sort_segments=True):
     if sort_segments:
         segments = sorted(segments, key=lambda s: (s.chromosome, s.start_position.coordinate, s.end_position.coordinate))
@@ -347,10 +360,19 @@ def write_segments_to_destination(destination, segments, separator="\t", extra="
             extra_strings = []
             if extra_description_is_all(extra=extra):
                 for key, value in segment.extra.items():
+                    if isinstance(value, (list, tuple)):
+                        value = ",".join(map(str, value))
+                    elif key == COPY_NUMBER and isinstance(value, (dict, defaultdict)):
+                        value = stringify_segment_cn_entry(entry=value)
                     extra_strings.append("{extra_name}={extra_value}".format(extra_name=key.lower(), extra_value=value if value is not None else extra_fill))
             else:
                 for entry in extra:
-                    extra_strings.append("{extra_name}={extra_value}".format(extra_name=str(entry).lower(), extra_value=segment.extra.get(entry, extra_fill)))
+                    value = segment.extra.get(entry, extra_fill)
+                    if isinstance(value, (list, tuple)):
+                        value = ",".join(map(str, value))
+                    elif entry == COPY_NUMBER and isinstance(value, (dict, defaultdict)):
+                        value = stringify_segment_cn_entry(entry=value)
+                    extra_strings.append("{extra_name}={extra_value}".format(extra_name=str(entry).lower(), extra_value=value))
             extra_string = extra_separator.join(extra_strings)
             data[EXTRA] = extra_string
         writer.writerow(data)
@@ -517,6 +539,16 @@ def write_adjacencies_to_file(file_name, adjacencies, extra="all", extra_fill=""
                                          sort_adjacencies=False)
 
 
+def stringify_adjacency_cn_entry(entry):
+    result = {}
+    for clone_id in entry.keys():
+        clone_specific_entries = {}
+        for phasing in entry[clone_id]:
+            clone_specific_entries[str(phasing)] = entry[clone_id][phasing]
+        result[clone_id] = clone_specific_entries
+    return str(result)
+
+
 def write_adjacencies_to_destination(destination, adjacencies, extra="all", extra_fill="", extra_separator=";", separator="\t", sort_adjacencies=True):
     if sort_adjacencies:
         adjacencies = sorted(adjacencies, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
@@ -540,13 +572,20 @@ def write_adjacencies_to_destination(destination, adjacencies, extra="all", extr
                 for key, value in adjacency.extra.items():
                     if isinstance(value, (list, tuple)):
                         value = ",".join(map(str, value))
+                    elif key == COPY_NUMBER and isinstance(value, (dict, defaultdict)):
+                        value = stringify_adjacency_cn_entry(entry=value)
                     extra_strings.append("{extra_name}={extra_value}".format(extra_name=str(key).lower(), extra_value=value if value is not None else extra_fill))
                 extra_strings.append("{extra_name}={extra_value}".format(extra_name=ADJACENCY_TYPE.lower(), extra_value=adjacency.adjacency_type.value))
             else:
                 for entry in extra:
+                    if entry.lower() == ADJACENCY_TYPE.lower():
+                        extra_strings.append("{extra_name}={extra_value}".format(extra_name=ADJACENCY_TYPE.lower(), extra_value=adjacency.adjacency_type.value))
+                        continue
                     value = adjacency.extra.get(entry, extra_fill)
                     if isinstance(value, (list, tuple)):
                         value = ",".join(map(str, value))
+                    elif entry == COPY_NUMBER and isinstance(value, (dict, defaultdict)):
+                        value = stringify_adjacency_cn_entry(entry=value)
                     extra_strings.append("{extra_name}={extra_value}".format(extra_name=str(entry).lower(), extra_value=value))
             extra_string = extra_separator.join(extra_strings)
             data[EXTRA] = extra_string
@@ -576,10 +615,14 @@ def is_format_extra_entry(entry):
 
 def get_vcf_info_string(adjacency, extra_fields, extra_fill=""):
     result = []
-    result.append("CHR2={chromosome}".format(chromosome=adjacency.position2.chromosome))
-    result.append("END={coordinate}".format(coordinate=adjacency.position2.coordinate))
-    result.append("STRANDS={s1}{s2}".format(s1=str(adjacency.position1.strand), s2=str(adjacency.position2.strand)))
     extra_lower = {key.lower(): value for key, value in adjacency.extra.items() if key.upper() not in {"CHR2", "END", "STRANDS"}}
+    if "svtype" in extra_lower and "ins" in extra_lower["svtype"].lower():
+        coord2 = adjacency.position1.coordinate
+    else:
+        coord2 = adjacency.position2.coordinate
+    result.append("CHR2={chromosome}".format(chromosome=adjacency.position2.chromosome))
+    result.append("END={coordinate}".format(coordinate=coord2))
+    result.append("STRANDS={s1}{s2}".format(s1=str(adjacency.position1.strand), s2=str(adjacency.position2.strand)))
     for key in extra_fields:
         if key.upper() in {"CHR2", "END", "STRANDS"}:
             continue
@@ -590,23 +633,108 @@ def get_vcf_info_string(adjacency, extra_fields, extra_fill=""):
     return ";".join(result)
 
 
-def get_vcf_format_string(adjacency, clone_id, format_fields, extra_fill=""):
+def get_vcf_format_string(adjacency, clone_id, format_fields, extra_fill=".", gt_extra=None, dummy_gt="./."):
     result = []
-    if COPY_NUMBER in adjacency.extra:
-        total_cn = sum([adjacency.extra[COPY_NUMBER][clone_id][ph] for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]])
-        genotype_value = "0/0" if total_cn == 0 else "./."
-    else:
-        genotype_value = "./."
     extra_lower = {key.lower(): value for key, value in adjacency.extra.items()}
+    gt_filled = False
+    genotype_value = dummy_gt
+    if gt_extra is not None:
+        for gt_ex in gt_extra.split(","):
+            if gt_ex.lower() not in extra_lower:
+                continue
+            genotype_value = extra_lower[gt_ex.lower()].replace("None", ".")
+            gt_filled = True
+            break
+    if not gt_filled and COPY_NUMBER in adjacency.extra:
+        total_cn = sum([adjacency.extra[COPY_NUMBER][clone_id][ph] for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]])
+        genotype_value = "0/0" if total_cn == 0 else dummy_gt
+        gt_filled = True
+    if not gt_filled:
+        genotype_value = dummy_gt
     for entry_id in format_fields:
         if entry_id.lower() == VCF_GENOTYPE.lower():
-            value = genotype_value
+            value = genotype_value.replace("None", ".")
         elif entry_id.lower() == COPY_NUMBER.lower() and COPY_NUMBER in adjacency.extra:
-            value = ",".join([str(adjacency.extra[COPY_NUMBER][clone_id][ph]) for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]])
+            value = "/".join([str(adjacency.extra[COPY_NUMBER][clone_id][ph]) for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]])
         else:
             value = str(extra_lower.get(entry_id.lower(), extra_fill))
         result.append(value)
     return ":".join(result)
+
+
+CIRCA_SIZE = "size"
+CIRCA_MID_POSITION = "mid_position"
+
+
+def write_adjacencies_to_circa_file(file_name, adjacencies, size_extra_field=None, size_extra_seq_field=None, size_abs=True):
+    with open(file_name, "wt") as dest:
+        write_adjacencies_to_circa_destination(destination=dest, adjacencies=adjacencies, size_extra_field=size_extra_field,
+                                               size_extra_seq_field=size_extra_seq_field, size_abs=size_abs)
+
+
+def write_adjacencies_to_circa_destination(destination, adjacencies, size_extra_field=None, size_extra_seq_field=None, size_abs=True):
+    header_entries = [AID, CHR1, COORD1, STRAND1, CHR2, COORD2, STRAND2, CIRCA_SIZE, CIRCA_MID_POSITION]
+    writer = csv.DictWriter(destination, fieldnames=header_entries, delimiter="\t")
+    writer.writeheader()
+    for adj in adjacencies:
+        data = {}
+        data[AID] = adj.extra.get(EXTERNAL_NA_ID, adj.stable_id_non_phased)
+        data[CHR1] = adj.position1.chromosome
+        data[COORD1] = adj.position1.coordinate
+        data[STRAND1] = adj.position1.strand
+        data[CHR2] = adj.position2.chromosome
+        data[COORD2] = adj.position2.coordinate
+        data[STRAND2] = adj.position2.strand
+        data[CIRCA_MID_POSITION] = adj.position1.coordinate + abs(adj.position1.coordinate - adj.position2.coordinate)
+        if adj.position1.chromosome != adj.position2.chromosome:
+            data[CIRCA_MID_POSITION] = -1
+        adj_size = None
+        try:
+            adj_size = int(adj.extra[size_extra_field])
+            if size_abs:
+                adj_size = abs(adj_size)
+        except (KeyError, ValueError):
+            pass
+        if adj_size is None:
+            try:
+                adj_size = len(adj.extra[size_extra_seq_field])
+            except (KeyError, ValueError):
+                pass
+        if adj_size is None:
+            adj_size = adj.distance_non_hap
+        data[CIRCA_SIZE] = adj_size
+        writer.writerow(data)
+
+
+def write_adjacencies_to_bedpe_file(file_name, adjacencies, name_extra_field=None):
+    with open(file_name, "wt") as dest:
+        write_adjacencies_to_bedpe_destination(destination=dest, adjacencies=adjacencies, name_extra_field=name_extra_field)
+
+
+def write_adjacencies_to_bedpe_destination(destination, adjacencies: Iterable[Adjacency], name_extra_field=None):
+    for adj in adjacencies:
+        print(adj.position1.chromosome, adj.position1.coordinate, adj.position1.coordinate,
+              adj.position2.chromosome, adj.position2.coordinate, adj.position2.coordinate,
+              adj.extra.get(name_extra_field, adj.extra[EXTERNAL_NA_ID]),
+              "NA",
+              adj.position1.strand, adj.position2.strand, sep="\t", file=destination)
+
+
+def write_segments_to_circa_destination(destination, segments, extra=None, extra_fill="."):
+    header_entries = [CHR, START, END, CIRCA_MID_POSITION]
+    if extra is not None:
+        header_entries.extend(extra)
+    writer = csv.DictWriter(destination, fieldnames=header_entries, delimiter="\t")
+    writer.writeheader()
+    for segment in segments:
+        data = {}
+        data[CHR] = segment.chromosome
+        data[START] = segment.start_coordinate
+        data[END] = segment.end_coordinate
+        data[CIRCA_MID_POSITION] = int(segment.start_coordinate + abs(segment.end_coordinate - segment.start_coordinate) / 2)
+        for entry in extra:
+            data[entry] = segment.extra.get(entry, extra_fill)
+        writer.writerow(data)
 
 
 class VCFOutputFormat(Enum):
@@ -620,7 +748,8 @@ def write_adjacencies_to_vcf_sniffles_file(file_name, adjacencies, extra="all", 
 
 
 def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extra="all", extra_fill=".", sort_adjacencies=True,
-                                                  dummy_clone="dummy_clone", clone_suffix=""):
+                                                  dummy_clone="dummy_clone", clone_suffix="", alt_extra=None, ref_extra=None,
+                                                  dummy_clone_gt_extra=None, dummy_gt="./."):
     if sort_adjacencies:
         adjacencies = sorted(adjacencies, key=lambda a: (a.position1.chromosome, a.position1.coordinate, a.position2.chromosome, a.position2.coordinate))
     adjacencies = list(adjacencies)
@@ -657,9 +786,9 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
                 continue
             if is_info_extra_entry(entry=key):
                 entry_id = str(key).upper()
-                entry_number = "." if isinstance(value, (list, tuple)) else "1"
+                entry_number = "." if isinstance(value, (list, tuple)) or (isinstance(value, str) and "," in value) else "1"
                 if entry_id in extra_info_fields_and_numbers and extra_info_fields_and_numbers[entry_id] != entry_number:
-                    entry_number = "1"
+                    entry_number = "."
                 extra_info_fields_and_numbers[entry_id] = entry_number
             elif is_format_extra_entry(entry=key):
                 entry_id = str(key).upper()
@@ -693,15 +822,37 @@ def write_adjacencies_to_vcf_sniffles_destination(destination, adjacencies, extr
         print(adjacency.position1.chromosome, end="\t", file=destination)  # CHROM
         print(adjacency.position1.coordinate, end="\t", file=destination)  # POS
         print(adjacency.extra.get(EXTERNAL_NA_ID, adjacency.idx), end="\t", file=destination)  # ID
-        print("N", end="\t", file=destination)  # REF
-        print("<{svtype}>".format(svtype=adjacency.extra.get(SVTYPE, "BND")), end="\t", file=destination)  # ALT
+        ref_extra_list = [""] if ref_extra is None else ref_extra.split(",")
+        extra = {k.lower(): v for k, v in adjacency.extra.items()}
+        for ref_ex in ref_extra_list:
+            # we need the 1 as a placeholder for non-alphanumerical entry, so that we fallback on N only if all ref extra field are missing
+            ref_extra_value = extra.get(ref_ex.lower(), "1")
+            if ref_extra is not None and not isinstance(ref_extra_value, (list, tuple)) and str(ref_extra_value).isalpha():
+                print(f'{ref_extra_value}', end="\t", file=destination)
+                break
+        else:
+            ref_extra_value = "N"
+            print(ref_extra_value, end="\t", file=destination)  # REF
+        alt_extra_list = [""] if alt_extra is None else alt_extra.split(",")
+        for alt_ex in alt_extra_list:
+            alt_extra_value = extra.get(alt_ex.lower(), "1")
+            if not isinstance(alt_extra_value, list):
+                alt_extra_value = alt_extra_value.split(",")
+            alt_extra_value = [v for v in alt_extra_value if v != ref_extra_value]
+            if alt_extra is not None and len(alt_extra_value) > 0 and all(map(lambda e: str(e).isalpha(), alt_extra_value)):
+                print(f'{",".join(map(str, alt_extra_value))}', end="\t", file=destination)     # ALT if there is sequence available and specified
+                break
+        else:
+            print("<{svtype}>".format(svtype=adjacency.extra.get(SVTYPE, "BND")), end="\t", file=destination)  # ALT
         print(".", end="\t", file=destination)  # QUAL
         print("PASS", end="\t", file=destination)  # FILTER
         print(get_vcf_info_string(adjacency=adjacency, extra_fields=sorted(extra_info_fields_and_numbers.keys()), extra_fill=extra_fill), end="\t", file=destination)  # INFO
         print(":".join(extra_format_fields_and_numbers.keys()), end="\t", file=destination)  # FORMAT
+        clones_strings = []
         for clone_id in clone_ids:
-            print(get_vcf_format_string(adjacency=adjacency, clone_id=clone_id, format_fields=sorted(extra_format_fields_and_numbers.keys())), end="\t", file=destination)  # SAMPLE
-        print(file=destination)
+            clones_strings.append(get_vcf_format_string(adjacency=adjacency, clone_id=clone_id, format_fields=sorted(extra_format_fields_and_numbers.keys()),
+                                                        gt_extra=dummy_clone_gt_extra, dummy_gt=dummy_gt))
+        print("\t".join(clones_strings), file=destination)  # SAMPLES
 
 
 def write_acnt_to_file(file_name, acnt, adjacencies, clone_ids=None,
@@ -788,7 +939,7 @@ def extract_acnt_from_adjacencies(adjacencies, clone_ids=None):
                 raise ValueError("Clone {cid} is not present in CN data for adjacency {adj}".format(cid=clone_id, adj=aid))
             for phasing in cn_data[clone_id]:
                 acnp = acnt[clone_id]
-                acnp._set_cn_record(aid=aid, phasing=phasing, cn=cn_data[clone_id][phasing])
+                acnp.set_cn_record(aid=aid, phasing=phasing, cn=cn_data[clone_id][phasing])
     return acnt
 
 
@@ -842,7 +993,7 @@ def read_acnt_old(file_name, clone_ids, separator="\t", cn_separator=";"):
                     raise Exception()
                 for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]:
                     acnp = result[clone_id]
-                    acnp._set_cn_record(aid=aid, phasing=ph, cn=cns[clone_id][ph])
+                    acnp.set_cn_record(aid=aid, phasing=ph, cn=cns[clone_id][ph])
     return adjacencies, result
 
 
@@ -1118,5 +1269,83 @@ def read_scn_boundaries(file_name, segments, clone_ids, separator="\t", cn_separ
     return result
 
 
+def write_scnt_to_shatterseek_destination(destination, segments, scnt, clone_id=None, default=0, output_header=True):
+    if clone_id is None:
+        clone_id = sorted(scnt.keys())[0]
+    if clone_id not in scnt:
+        raise ValueError("Clone {clone_id} is not present in the Segment Copy Number Tensor (available clone ids :{available})"
+                         "".format(clone_id=clone_id, available=",".join(map(str, sorted(scnt.keys())))))
+    scnp : SegmentCopyNumberProfile = scnt[clone_id]
+    if output_header:
+        print("chrom", "start", "end", "CN", sep="\t", file=destination)
+    for segment in segments:
+        total_cn = scnp.get_combined_cn(sid=segment.stable_id_non_hap, default=default)
+        print(segment.chromosome, segment.start_coordinate, segment.end_coordinate, total_cn, sep="\t", file=destination)
+
+
+def write_scnt_to_shatterseek_file(file_name, segments, scnt, clone_id=None, default=0, output_header=True):
+    with open(file_name, "wt") as dest:
+        write_scnt_to_shatterseek_destination(destination=dest, segments=segments, scnt=scnt, clone_id=clone_id, default=default, output_header=output_header)
+
+
+def iter_text_edge_list_representation_for_graph(graph: IntervalAdjacencyGraph):
+    for edge in graph.segment_edges(data=True):
+        u, v, data = edge
+        cn = str(data.get("copy_number", 0))
+        yield "\t".join((map(str, (u, v, cn, "S"))))
+    for edge in graph.adjacency_edges(data=True):
+        u, v, data = edge
+        cn = str(data.get("copy_number", 0))
+        yield "\t".join((map(str, (u, v, cn, "A"))))
+
+
+def iter_text_representation_for_graph(graph, style="edge-list"):
+    if style == "edge-list":
+        return iter_text_edge_list_representation_for_graph(graph=graph)
+
+
+def write_graph_to_destination(graph, destination, style="edge-list"):
+    for line in iter_text_representation_for_graph(graph=graph, style=style):
+        print(line, file=destination)
+
+
+def write_graph_to_file(graph, file_name, style="edge-list"):
+    with open(file_name, "wt") as destination:
+        write_graph_to_destination(graph=graph, destination=destination, style=style)
+
+
 def get_full_path(path):
     return os.path.abspath(os.path.expanduser(path))
+
+
+def read_chr_sizes_from_source(source):
+    result = {}
+    for line in source:
+        line = line.strip()
+        if len(line) == 0 or line.startswith("#"):
+            continue
+        data = line.split("\t")
+        result[data[0]] = int(data[1])
+    return result
+
+
+COMPLEX_REARR_SIGN_K = "k"
+COMPLEX_REARR_SIGN_ADJS = "adjs"
+COMPLEX_REARR_SIGN_LOCS = "locs"
+
+
+def write_complex_rearr_signature_groups_to_file(file_name, signatures: Iterable[ComplexRearrSignature], separator="\t", internal_separator=","):
+    with open(file_name, "wt") as destination:
+        write_complex_rearr_signature_groups_to_destination(destination=destination, signatures=signatures, separator=separator, internal_separator=internal_separator)
+
+
+def write_complex_rearr_signature_groups_to_destination(destination, signatures: Iterable[ComplexRearrSignature], separator="\t", internal_separator=","):
+    writer = csv.DictWriter(destination, fieldnames=[COMPLEX_REARR_SIGN_K, COMPLEX_REARR_SIGN_ADJS, COMPLEX_REARR_SIGN_LOCS], delimiter=separator)
+    writer.writeheader()
+    for signature in signatures:
+        data = {
+            COMPLEX_REARR_SIGN_K: signature.k,
+            COMPLEX_REARR_SIGN_ADJS: internal_separator.join(adj.extra.get(EXTERNAL_NA_ID, adj.distance_non_hap) for adj in signature.adjacencies),
+            COMPLEX_REARR_SIGN_LOCS: internal_separator.join(str(adj.position1) for adj in signature.ref_adjacencies)
+        }
+        writer.writerow(data)

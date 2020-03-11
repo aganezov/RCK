@@ -1,6 +1,8 @@
 import csv
 import math
 
+import gffutils
+
 from rck.core.structures import SegmentCopyNumberProfile, Segment, Haplotype
 from rck.utils.adj.convert import strip_chr
 
@@ -91,7 +93,7 @@ def get_scnt_from_hatchet_file(file_name, sample_name, separator="\t", clone_ids
         return get_scnt_from_hatchet_source(source=source, separator=separator, clone_ids=clone_ids, chr_strip=chr_strip)
 
 
-def get_scnt_from_hatchet_source(source, clone_ids, separator="\t", chr_strip=True):
+def get_scnt_from_hatchet_source(source, sample_name, clone_ids, separator="\t", chr_strip=True):
     scnt = {clone_id: SegmentCopyNumberProfile() for clone_id in clone_ids}
     segments = []
     clone_id_mappings = {}
@@ -108,8 +110,8 @@ def get_scnt_from_hatchet_source(source, clone_ids, separator="\t", chr_strip=Tr
         clone_cn_strs = clone_data[::2]
         if line.startswith("#") or len(line) == 0:
             continue
-        sample_name = data[3]
-        if sample_name != sample_name:
+        data_sample_name = data[3]
+        if data_sample_name != sample_name:
             continue
         chromosome = data[0]
         if chr_strip:
@@ -244,3 +246,60 @@ def get_scnt_from_titan_source(source, sample_name, clone_ids, separator="\t", c
                 scnp.set_cn_record(sid=sid, hap=Haplotype.A, cn=1)
                 scnp.set_cn_record(sid=sid, hap=Haplotype.B, cn=1)
     return segments, scnt
+
+
+GINKGO_CHROMOSOME = "CHR"
+GINKGO_START_POSITION = "START"
+GINKGO_END_POSITION = "END"
+
+
+def get_scnt_from_ginkgo_file(file_name, sample_name, dummy_clone="1", separator="\t", chr_strip=True):
+    with open(file_name, "rt") as source:
+        return get_scnt_from_ginkgo_source(source=source, sample_name=sample_name, dummy_clone=dummy_clone, separator=separator, chr_strip=chr_strip)
+
+
+def get_scnt_from_ginkgo_source(source, sample_name, dummy_clone="1", separator="\t", chr_strip=True):
+    scnp = SegmentCopyNumberProfile()
+    segments = []
+    reader = csv.DictReader(source, delimiter=separator)
+    for row in reader:
+        chromosome = row[GINKGO_CHROMOSOME]
+        if chr_strip:
+            chromosome = strip_chr(chr_string=chromosome)
+        start = int(row[GINKGO_START_POSITION])
+        end = int(row[GINKGO_END_POSITION])
+        try:
+            cn = int(row[sample_name])
+        except KeyError:
+            raise IOError("Could not obtain a segment copy value for sample {sample}. Make sure that --sample-name matches (including case) to the column header in the Ginkgo file")
+        segment = Segment.from_chromosome_coordinates(chromosome=chromosome, start=start, end=end)
+        sid = segment.stable_id_non_hap
+        segments.append(segment)
+        scnp.set_cn_record(sid=sid, hap=Haplotype.A, cn=cn)
+    scnt = {dummy_clone: scnp}
+    return segments, scnt
+
+
+def get_segments_from_gff_file(file_name, chr_strip=True, chr_mapping=None, chr_mapping_missing_strategy="keep"):
+    result = []
+    for record in gffutils.DataIterator(file_name):
+        chr_name = record.chrom
+        if chr_mapping is not None and chr_name not in chr_mapping and chr_mapping_missing_strategy == "skip":
+            continue
+        if chr_mapping is not None:
+            chr_name = chr_mapping.get(chr_name, chr_name)
+        if chr_strip:
+            chr_name = strip_chr(chr_string=chr_name)
+        extra = dict(record.attributes)
+        new_extra = {}
+        for key, value in extra.items():
+            if isinstance(value, list) and len(value) == 1:
+                value = value[0]
+            new_extra[key] = value
+        segment = Segment.from_chromosome_coordinates(chromosome=chr_name, start=record.start, end=record.end)
+        segment.extra.update(new_extra)
+        result.append(segment)
+    return result
+
+
+

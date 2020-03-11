@@ -40,10 +40,11 @@ RCK infers clone- and haplotype-speicifc cancer genome karyotypes from tumor mix
 
 RCK assumes that:
 * the reference human genome is diploid (except for sex chromosomes)
-* somatic evolution is propagated by large scale rearrangements (any type, quantity, etc) that respect the infinite sites assumption (i.e., no genomic location, on either copy of the homologous chromosome, prticipates in the double-stranded breakage, which are requried for a rearrangement to happen, more than once thgoughout the entire somatic evolutionary history of the tumor)
+* somatic evolution is propagated by large scale rearrangements (any type, quantity, etc) that respect the infinite sites assumption (i.e., no genomic location, on either copy of the homologous chromosome, prticipates in the double-stranded breakage, which are requried for a rearrangement to happen, more than once thgoughout the entire somatic evolutionary history of the tumor); 
+    this can be relaxed for extremity-exclusivity constraint, if in the high confident input novel adjacencies some genomic location is shared.   
 * no novel genomic locations (unless explicitly specified) can play a role of telomeres in the derived chromosomes
 * (approximate) clone- and allele-specific fragment/segment copy numbers are inferred by 3rd-party tools and are part of the input (see more in the [segments docs](docs/Segments.md))
-* (noisy) unlabeled (i.e.,  without haplotype labels) noel adjacencies (aka structural variants) are inferred by 3rd-party tools and are part of the input (see more in the [adjacencies docs](docs/Adjacencies.md))
+* (noisy) unlabeled (i.e.,  without haplotype labels) novel adjacencies (aka structural variants) are inferred by 3rd-party tools and are part of the input (see more in the [adjacencies docs](docs/Adjacencies.md))
 
 RCK uses a Diploid Interval Adjacency Graph to represent all possible segments and transitions between them (across all clones and the reference). 
 RCK then solves an optimization problem of inferring clone- and haplotype-specific karyotypes (i.e., finding clone-specific edge multiplicity functions in the constructed DIAG) as an MILP program.
@@ -89,7 +90,8 @@ The minimum input for RCK is comprised of two parts:
 Additional input can contain:
 * Additional telomere locations
 * Segment-, clone-, and allele-specific boundaries (both lower and upper) on inferred copy numbers 
-* Grouping information about clone-specific novel adjacencies (usually informed by 3rd-generation sequencing data)
+* Grouping information about clone-specific novel adjacencies (usually informed by 3rd-generation sequencing data), with individual False Positive rates per each group
+* False Positive rates for any subgroup of input novel adjacencies. 
 
 RCK expects the input data to be in a (C/T)SV (Coma/Tab Separated Values) format.
 We provide a set of utility tools to convert input data obtained from a lot of state-of-the-atr methods outputs into the RCK suitable format. 
@@ -101,7 +103,8 @@ We currently support converting the output of the following 3rd-party SV detecti
 * *short-reads*
     * **Delly** [[paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3436805/) | [code](https://github.com/dellytools/delly)] 
     * **Manta** [[paper](https://www.ncbi.nlm.nih.gov/pubmed/26647377) | [code](https://github.com/Illumina/manta)] 
-    * **Lumpy** [[paper](https://genomebiology.biomedcentral.com/articles/10.1186/gb-2014-15-6-r84) | [code](https://github.com/arq5x/lumpy-sv)] 
+    * **Lumpy** [[paper](https://genomebiology.biomedcentral.com/articles/10.1186/gb-2014-15-6-r84) | [code](https://github.com/arq5x/lumpy-sv)]
+    * **BreakDancer** [[paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4138716/) | [code](https://github.com/genome/breakdancer)] 
 * *linked/barcode reads* 
     * **LongRanger** [[paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4786454/) | [code](https://github.com/10XGenomics/longranger)] 
     * **GROC-SVs** [[paper](https://www.ncbi.nlm.nih.gov/pubmed/28714986) | [code](https://github.com/grocsvs/grocsvs)]
@@ -109,6 +112,8 @@ We currently support converting the output of the following 3rd-party SV detecti
 * *long reads*
     * **Sniffles** [[paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5990442/) | [code](https://github.com/fritzsedlazeck/Sniffles)]
     * **PBSV** [paper | [code](https://github.com/PacificBiosciences/pbsv)]
+* *generic*
+    * **SURVIVOR** [[paper](https://www.nature.com/articles/ncomms14061) | [code](https://github.com/fritzsedlazeck/SURVIVOR)]
 
 For more information about adjacencies, formats, converting, reciprocality, etc, please refer to [adjacencies documentation](docs/Adjacencies.md)      
 
@@ -120,6 +125,26 @@ We currently support converting the output of the following 3rd-party tools:
 * **TitanCNA** [[paper](https://www.ncbi.nlm.nih.gov/pubmed/25060187) | [code](https://github.com/gavinha/TitanCNA)]
 * **Battenberg** [[paper](https://www.ncbi.nlm.nih.gov/pubmed/22608083) | [code](https://github.com/cancerit/cgpBattenberg)]
 * **ReMixT** [[paper](https://www.ncbi.nlm.nih.gov/pubmed/28750660) | [code](https://bitbucket.org/dranew/remixt)]
+* **Ginkgo** [[paper](https://www.nature.com/articles/nmeth.3578) | [code](https://github.com/robertaboukhalil/ginkgo)] (Attention! *haploid* mode only)
+
+## High-level RCK data processing recipe
+For the most cases the cancer sample of interest is initially represented via a set `cancer.sr.fastq` of reads obtained via a sequencer. 
+Additionally, a sequenced reads `normal.sr.fastq` from a matching normal sample need to be available.   
+Most often case of analysis consists of having a standard Illumina paired-end sequenced reads for both the tumor and the matching normal.
+Increasingly 3rd-generation sequencing technologies are being utilized in cancer analysis. 
+Let us assume that there may optionally be a set `cancer.lr.fastq` of reads for the cancer sample in question obtained via 3rd-generation sequencing technology.
+
+1. Align sequenced reads (with you aligner of choice) `cancer.sr.fastq` and `normal.sr.fastq` for cancer and a matching normal samples to obtain `cancer.sr.bam` and `normal.sr.bam`
+    1. Optionally align sequenced long reads `cancer.lr.fastq` to obtain `cancer.lr.bam`
+2. Run a tool of you choosing on `cancer.sr.fastq` to obtain a novel adjacencies VCF file `cancer.sr.vcf`
+    1. Optionally infer novel adjacencies on long-read dataset obtaining `cancer.lr.vcf`
+    2. Merge short- and long-read novel adjacencies into a unified set `cancer.vcf` (we suggest using SURVIVOR tool [[code](https://github.com/fritzsedlazeck/SURVIVOR) | [paper](https://www.nature.com/articles/ncomms14061)] for this task)
+3. Convert novel adjacencies from VCF file `cancer.vcf` to the `RCK` input format via `rck-adj-x2rck x cancer.vcf -o input.rck.adj.tsv`, where `x` stands for the novel adjacency inference tool. 
+Please, see [adjacencies docs](docs/Adjacencies.md) for list of supported tools and more detailed instructions on comparison.
+4. Run any of the supported tools (HATCHet, TitanCNA, Battenberg, ReMixT) of choice to infer large-scale clone- and allele-specific fragment copy numbers `CN.data` (generic name of the tool-specific result)
+5. Convert tool-specific copy-number data `CN.data` into `RCK` format via `rck-scnt-x2rck x CN-data -o input.rck.scnt.tsv`, where `x` stands for copy number inference tool.
+Please, see [segments docs](docs/Segments.md) for link to specific methods, as well as details on how to run conversion.
+6. Run `RCK` 
 
 ### Running RCK
 We provide the the `rck` tool to run the main RCK algorithm for clone- and haplotype specific cancer karyotypes reconstruction.
@@ -147,6 +172,8 @@ The following two files depict the inferred clone- and haplotype-specific karyot
 * `rck.acnt.tsv` - clone- and haplotype-specific adjacencies copy numbers;
 
 For information about the format of the inferred clone- and haplotype-specific copy numbers on segments/adjacencies please refer to [segment](docs/Segments.md)/[adjacency](docs/Adjacencies.md) documentations
+
+Results in the original [manuscript](https://www.biorxiv.org/content/10.1101/560839v1) can be found in the [dedicated Github repository](https://github.com/aganezov/RCK-pub-data). 
 
 ### Citation
 When using RCK's cancer karyotype reconstruction algorithm or any of RCK's utilities, please cite the following paper: 

@@ -30,7 +30,7 @@ class Strand(Enum):
         if not isinstance(other, Strand):
             return False
         if self.value != other.value:
-            return self.value == "-"
+            return self.value == 0
         return False
 
 
@@ -194,6 +194,17 @@ class Position(object):
         if pos1.strand != pos2.strand:
             return 3000000000
         return abs(pos1.coordinate - pos2.coordinate)
+
+    @staticmethod
+    def get_reciprocal(position: "Position"):
+        result = deepcopy(position)
+        if position.strand == Strand.FORWARD:
+            result.coordinate += 1
+            result.strand = Strand.REVERSE
+        else:
+            result.coordinate -= 1
+            result.strand = Strand.FORWARD
+        return result
 
 
 class PositionCluster(object):
@@ -550,7 +561,7 @@ class Adjacency(object):
         p1_id, p2_id = self.position1.stable_id_non_hap, self.position2.stable_id_non_hap
         if self.position2.less_than__non_hap(self.position1):
             p1_id, p2_id = p2_id, p1_id
-        return "[{p1}]-[{p2}]".format(p1=p1_id, p2=p2_id)
+        return "[{p1}]-[{p2}]{t}".format(p1=p1_id, p2=p2_id, t=self.adjacency_type.value)
 
     @property
     def id_non_phased(self):
@@ -568,7 +579,7 @@ class Adjacency(object):
             p1, p2 = p2, p1
         p1_id = Position.id_hap_string_from_elements(chrom=p1.chromosome, hap=phasing.value[0], strand=p1.strand, coord=p1.coordinate)
         p2_id = Position.id_hap_string_from_elements(chrom=p2.chromosome, hap=phasing.value[1], strand=p2.strand, coord=p2.coordinate)
-        return "[{p1}]-[{p2}]".format(p1=p1_id, p2=p2_id)
+        return "[{p1}]-[{p2}]{t}".format(p1=p1_id, p2=p2_id, t=self.adjacency_type.value)
 
     @property
     def id_phased(self):
@@ -689,15 +700,15 @@ class AdjacencyCopyNumberProfile(object):
     def __init__(self):
         self.records = defaultdict(dict)
 
-    def _set_cn_record(self, aid, phasing, cn, check_cn_value=False):
+    def set_cn_record(self, aid, phasing, cn, check_cn_value=False):
         if check_cn_value and cn < 0:
             raise ValueError()
         self.records[aid][phasing] = cn
 
-    def set_cnt_record_for_adjacency(self, adjacency, cn, phasing=Phasing.AA, check_cn_value=False):
+    def set_cn_record_for_adjacency(self, adjacency, cn, phasing=Phasing.AA, check_cn_value=False):
         phasing = adjacency.get_phasing(sort=True, default=phasing)
         aid = adjacency.stable_id_non_phased
-        self._set_cn_record(aid=aid, phasing=phasing, cn=cn, check_cn_value=check_cn_value)
+        self.set_cn_record(aid=aid, phasing=phasing, cn=cn, check_cn_value=check_cn_value)
 
     def get_phase_aware_cn_by_adj_and_phasing(self, adjacency, phasing, default=0):
         aid = adjacency.stable_id_non_phased
@@ -755,7 +766,7 @@ class AdjacencyCopyNumberProfile(object):
         for adjacency in genome.iter_adjacencies():
             phasing = adjacency.get_phasing(sort=False, default=default_phasing)
             current_value = result.get_phase_aware_cn_by_adj_and_phasing(adjacency=adjacency, phasing=phasing, default=0)
-            result.set_cnt_record_for_adjacency(adjacency=adjacency, cn=current_value + 1, phasing=phasing)
+            result.set_cn_record_for_adjacency(adjacency=adjacency, cn=current_value + 1, phasing=phasing)
         return result
 
     def aid_keys(self):
@@ -781,7 +792,7 @@ class AdjacencyCopyNumberProfile(object):
                 for ph in [Phasing.AA, Phasing.AB, Phasing.BA, Phasing.BB]:
                     current_cn = result.get_cn(aid=aid, phasing=ph)
                     profile_specific = acnp.get_cn(aid=aid, phasing=ph)
-                    result._set_cn_record(aid=aid, phasing=ph, cn=current_cn + profile_specific)
+                    result.set_cn_record(aid=aid, phasing=ph, cn=current_cn + profile_specific)
         return result
 
 
@@ -957,6 +968,7 @@ class Genome(list):
 class AdjacencyGroupType(Enum):
     MOLECULE = "M"
     LABELING = "L"
+    GENERAL = "N"
 
     @classmethod
     def from_string(cls, string):
@@ -1405,9 +1417,11 @@ def partition_fragments_into_segments_by_na_clusters(hapl_fragments, na_clusters
     return segments_by_chr, fragments_to_segments
 
 
-def refined_scnt(segments, scnt, merge_fragments=True, max_merge_gap=1000000000, fill_gaps=True, max_fill_gap=1000000000):
-    if not merge_fragments and not fill_gaps:
+def refined_scnt(segments, scnt, merge_fragments=True, max_merge_gap=1000000000, fill_gaps=True, max_fill_gap=1000000000,
+                 extend_outermost=True, outermost_positions=None, outermost_positions_margin=1000):
+    if not merge_fragments and not fill_gaps and not extend_outermost:
         return deepcopy(segments), deepcopy(scnt)
+    outermost_positions = outermost_positions if outermost_positions is not None else {}
     clone_ids = sorted(scnt.keys())
     new_fragments_by_chr = defaultdict(list)
     fragments_by_chr = defaultdict(list)
@@ -1425,6 +1439,10 @@ def refined_scnt(segments, scnt, merge_fragments=True, max_merge_gap=1000000000,
         if len(chr_fragments) == 0:
             continue
         current_new_fragment = deepcopy(chr_fragments[0])
+        outermost_start_position = outermost_positions.get(chr_name, {"start": current_new_fragment.start_position}).get("start", current_new_fragment.start_position)
+        if extend_outermost and current_new_fragment.start_coordinate > outermost_start_position.coordinate:
+            outermost_start_position.coordinate = max(0, outermost_start_position.coordinate - outermost_positions_margin)
+            current_new_fragment.start_position = outermost_start_position
         current_new_f_id = current_new_fragment.stable_id_non_hap
         current_f_cnas = {clone_id: scnt[clone_id].get_cn(sid=current_new_f_id, haplotype=Haplotype.A, default=0) for clone_id in clone_ids}
         current_f_cnbs = {clone_id: scnt[clone_id].get_cn(sid=current_new_f_id, haplotype=Haplotype.B, default=0) for clone_id in clone_ids}
@@ -1466,6 +1484,10 @@ def refined_scnt(segments, scnt, merge_fragments=True, max_merge_gap=1000000000,
         ####
         # Reaching this place only after everything on the chromosome is processed
         ####
+        outermost_end_position = outermost_positions.get(chr_name, {"end": current_new_fragment.end_position}).get("end", current_new_fragment.end_position)
+        if extend_outermost and current_new_fragment.end_coordinate < outermost_end_position.coordinate:
+            outermost_end_position.coordinate = outermost_end_position.coordinate + outermost_positions_margin
+            current_new_fragment.end_position = outermost_end_position
         current_new_f_id = current_new_fragment.stable_id_non_hap
         for old_id in old_to_new:
             segments_ids_mapping[current_new_f_id].append(old_id)
@@ -1539,7 +1561,7 @@ def cns_match(cns1, cns2, clone_ids):
     return True
 
 
-def refined_scnt_with_adjacencies_and_telomeres(segments, scnt, adjacencies=None, telomere_positions=None, allow_unit_segments=True):
+def refined_scnt_with_adjacencies_and_telomeres(segments, scnt, adjacencies=None, telomere_positions=None, allow_unit_segments=True, ):
     fragments = deepcopy(segments)
     if telomere_positions is None:
         telomere_positions = []
@@ -1562,8 +1584,10 @@ def refined_scnt_with_adjacencies_and_telomeres(segments, scnt, adjacencies=None
         positions_by_chr[tel_position.chromosome].append(tel_position)
     if len(list(positions_by_chr.keys())) == 0:
         return fragments, deepcopy(scnt), {f.stable_id_non_hap: [f.stable_id_non_hap] for f in fragments}
-    if not positions_within_segments(segments_by_chr=fragments_by_chr, positions_by_chr=positions_by_chr):
-        raise ValueError("Either adjacency or telomere positions do not lie within segment")
+    bad_positions = positions_outside_segments(segments_by_chr=fragments_by_chr, positions_by_chr=positions_by_chr)
+    if len(bad_positions) > 0:
+        raise ValueError("Either adjacency or telomere positions ({positions}) do not lie within segment"
+                         "".format(positions=",".join(map(lambda p: p.stable_id_non_hap, bad_positions))))
     for chr_name in sorted(fragments_by_chr.keys()):
         fragments_by_chr[chr_name] = sorted(fragments_by_chr[chr_name], key=lambda s: (s.start_position, s.end_position))
         if not sorted_segments_donot_overlap(segments=fragments_by_chr[chr_name]):
@@ -1667,11 +1691,16 @@ def extract_spanned_extremities(source, boundaries):
     return result
 
 
-def positions_within_segments(segments_by_chr, positions_by_chr):
+def positions_outside_segments(segments_by_chr, positions_by_chr, short_circuit=True):
     segments_chr_names = set(segments_by_chr.keys())
     positions_chr_names = set(positions_by_chr.keys())
+    result = []
     if len(positions_chr_names - segments_chr_names) > 0:
-        return False
+        positions_only_chromosomes = positions_chr_names - segments_chr_names
+        for chr_name in positions_only_chromosomes:
+            result.extend(positions_by_chr[chr_name])
+            if short_circuit:
+                return result
     chr_names = sorted(positions_chr_names & segments_chr_names)
     for chr_name in chr_names:
         segments = iter(sorted(segments_by_chr[chr_name], key=lambda s: (s.start_position.coordinate, s.end_position.coordinate)))
@@ -1680,14 +1709,19 @@ def positions_within_segments(segments_by_chr, positions_by_chr):
         current_position = next(positions, None)
         while current_segment is not None and current_position is not None:
             if current_position.coordinate < current_segment.start_position.coordinate:
-                return False
+                result.append(current_position)
+                if short_circuit:
+                    return result
             elif current_segment.start_position.coordinate <= current_position.coordinate <= current_segment.end_position.coordinate:
                 current_position = next(positions, None)
             else:
                 current_segment = next(segments, None)
-        if current_position is not None:
-            return False
-    return True
+        while current_position is not None:
+            result.append(current_position)
+            if short_circuit:
+                return result
+            current_position = next(positions, None)
+    return result
 
 
 def set_cnr(parent_fragment, fcnt, child_segment, scnt):
@@ -1797,7 +1831,7 @@ def aligned_scnts(segments_by_sample_names, scnts_by_sample_names, fill_gaps=Tru
     for sample_name in sample_names:
         scnt = result_scnts_by_sample_names[sample_name]
         segments = result_segments_by_sample_names[sample_name]
-        ref_segments, ref_scnt = refined_scnt_with_adjacencies_and_telomeres(segments=segments, scnt=scnt, adjacencies=[], telomere_positions=all_positions_list)
+        ref_segments, ref_scnt, _ = refined_scnt_with_adjacencies_and_telomeres(segments=segments, scnt=scnt, adjacencies=[], telomere_positions=all_positions_list)
         result_segments_by_sample_names[sample_name] = ref_segments
         result_scnts_by_sample_names[sample_name] = ref_scnt
     return result_segments_by_sample_names, result_scnts_by_sample_names
@@ -1964,15 +1998,15 @@ def get_segments_for_fragments_ids_dict(segments, fragments, allow_non_covered=T
         fragments_by_chr[f.chromosome].append(f)
     for chr_name in sorted(segments_by_chr.keys()):
         if chr_name not in fragments_by_chr and not allow_non_covered:
-            raise Exception()
+            raise Exception("Segments chromosome {chrom} is not in fragments".format(chrom=chr_name))
         chr_segments = sorted(segments_by_chr[chr_name], key=lambda s: (s.start_position.coordinate, s.end_position.coordinate))
         if not sorted_segments_donot_overlap(segments=chr_segments):
-            raise Exception()
+            raise Exception("Sorted segments overlap on chromosome {chrom}".format(chrom=chr_name))
         chr_fragments = sorted(fragments_by_chr[chr_name], key=lambda f: (f.start_position.coordinate, f.end_position.coordinate))
         if not sorted_segments_donot_overlap(segments=chr_fragments):
-            raise Exception()
+            raise Exception("Sorted fragment overlap on chromosome {chrom}".format(chrom=chr_name))
         if boundaries_overlap(fragments=chr_fragments, segments=chr_segments):
-            raise Exception()
+            raise Exception("Segments and fragments are overlapping, and are not aligned")
         fragments_it = iter(chr_fragments)
         segments_it = iter(chr_segments)
         current_fragment = next(fragments_it, None)
