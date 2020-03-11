@@ -27,10 +27,11 @@ The full description of the algorithm and its application on published cancer da
 3. [Input preprocessing](#input-preprocessing)
     1. [Novel Adjacencies](#novel-adjacencies)
     2. [Segment copy numbers](#segment-copy-numbers) 
-4. [Running RCK](#running-rck)
-5. [Results](#results)
-6. [Citation](#citation)
-7. [Issues](#issues)
+4. [High-level RCK data processing recipe](#RCK-data-processing-recipe)
+5. [Running RCK](#running-rck)
+6. [Results](#results)
+7. [Citation](#citation)
+8. [Issues](#issues)
 
 ### Algorithm Overview
 
@@ -127,7 +128,7 @@ We currently support converting the output of the following 3rd-party tools:
 * **ReMixT** [[paper](https://www.ncbi.nlm.nih.gov/pubmed/28750660) | [code](https://bitbucket.org/dranew/remixt)]
 * **Ginkgo** [[paper](https://www.nature.com/articles/nmeth.3578) | [code](https://github.com/robertaboukhalil/ginkgo)] (Attention! *haploid* mode only)
 
-## High-level RCK data processing recipe
+## RCK data processing recipe
 For the most cases the cancer sample of interest is initially represented via a set `cancer.sr.fastq` of reads obtained via a sequencer. 
 Additionally, a sequenced reads `normal.sr.fastq` from a matching normal sample need to be available.   
 Most often case of analysis consists of having a standard Illumina paired-end sequenced reads for both the tumor and the matching normal.
