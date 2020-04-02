@@ -10,7 +10,7 @@ from rck.core.structures import Genome, Segment, Strand, ChromosomeType
 from rck.utils.sim.rearrangement import Rearrangement, InsRearrangement, DelRearrangement, InversionRearrangement, DupRearr, TandemDupRearrangement, TraRearrangement, \
     MultiChrDupRearrangement, MultiChrDelRearrangement, TranslocationType, BFBRearrangement, OrientedIndexedSegment, RearrangementChrTarget, RearrangementChrResult, \
     RearrangementTarget, RearrangementResult, ChromothripsisRearrangement, \
-    ChromoplexyRearrangement
+    ChromoplexyRearrangement, SNPRearrangement
 
 REARRANGEMENT_STRING = "rearr_str"
 CNT = "cnt"
@@ -309,6 +309,29 @@ class InsRearrangementGenerator(RearrangementGenerator):
         regions = cls.parse_regions(yaml_dict.get(REGIONS, ""))
         lengths = cls.parse_lengths(yaml_dict.get(LENGTH_RANGES, "50-20000"), yaml_dict.get(LENGTH_DISTRS, ""))
         return cls(InsRearrangement, regions=regions, lengths=lengths, id_prefix=id_prefix)
+
+
+class SNPRearrangementGenerator(RearrangementGenerator):
+    def __init__(self, rearr_type: Type[SNPRearrangement],
+                 regions: List[Segment],
+                 id_prefix: "SNP", *args, **kwargs):
+        super().__init__(rearr_type, id_prefix, *args, **kwargs)
+        self.regions = regions
+
+    def _generate_rearrangement_attempt(self, genome: Genome, ins_rearr_id: Optional[str] = None, forbidden_ids: Optional[Set[str]] = None, retry_cnt: int = 100,
+                                        constraints: Optional[List[Constraint]] = None, *args, **kwarg) -> Rearrangement:
+        pass
+
+    def generate_rearrangement(self, genome: Genome, snp_rearr_id: Optional[str] = None, forbidden_ids: Optional[Set[str]] = None, retry_cnt: int = 100,
+                               constraints: Optional[Set[Type[Constraint]]] = None, *args, **kwargs) -> Rearrangement:
+        try_cnt = 0
+        while True:
+            try_cnt += 1
+            if try_cnt >= retry_cnt:
+                raise ValueError(f"Tried {try_cnt} number of times to generate a SNP. Failed to do so with constraints.")
+            rearr = self._generate_rearrangement_attempt(genome, snp_rearr_id, forbidden_ids, retry_cnt, constraints)
+            if self.suitable(rearr, genome, constraints):
+                return rearr
 
 
 class DelRearrangementGenerator(RearrangementGenerator):

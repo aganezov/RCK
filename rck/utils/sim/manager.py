@@ -7,12 +7,11 @@ from enum import Enum
 from io import StringIO
 from typing import Set, Union, Iterable, Tuple, List, Optional, Iterator, Type, Dict
 
-import Bio
 from Bio import Phylo
 
 import networkx as nx
 
-from rck.core.structures import Position, Segment, Strand, reverse_segment, ChromosomeType, Chromosome, Genome
+from rck.core.structures import Position, Segment, Strand, reverse_segment, ChromosomeType, Chromosome, Genome, Haplotype, HAPLOTYPE
 from rck.utils.sim.rearrangement import Rearrangement, RearrangementChrTarget, OrientedIndexedSegment, RearrangementChrResult
 from rck.utils.sim.rearr_generator import Constraint, ForbiddenTelomereCreationConstraint, HaploidISConstraint, DiploidISConstraint, RearrangementGeneratorGroup, \
     REARRANGEMENT_STRING

@@ -79,6 +79,28 @@ def get_noisy_scnt(segments: List[Segment], scnt: Dict[str, SegmentCopyNumberPro
     return chunk_segments, result
 
 
+def get_errored_scnt(segments: List[Segment], scnt: Dict[str, SegmentCopyNumberProfile],
+                     error_p: float = 0.03, error_magnitude: int = 1) -> Tuple[List[Segment], Dict[str, SegmentCopyNumberProfile]]:
+    result_scnt = {clone_id: SegmentCopyNumberProfile() for clone_id in scnt.keys()}
+    for segment in segments:
+        sid: str = segment.stable_id_non_hap
+        for clone_id in result_scnt.keys():
+            for haplotype in [Haplotype.A, Haplotype.B]:
+                cn: int = scnt[clone_id].get_cn(sid=sid, haplotype=haplotype, default=-1)
+                assert cn != -1
+                cn = max(0, cn + get_cn_error(error_p=error_p, error_magnitude=error_magnitude))
+                result_scnp: SegmentCopyNumberProfile = result_scnt[clone_id]
+                result_scnp.set_cn_record(sid=sid, hap=haplotype, cn=cn)
+    return segments, result_scnt
+
+
+def get_cn_error(error_p: float = 0.03, error_magnitude: int = 1):
+    error: int = 0
+    if numpy.random.choice([True, False], size=1, p=[error_p, 1-error_p])[0]:
+        error += (numpy.random.choice([1, -1], size=1)[0] * numpy.random.randint(low=1, high=error_magnitude + 1))
+    return error
+
+
 def get_unlabeled_adjacencies(adjacencies: List[Adjacency], acnt: Dict[str, AdjacencyCopyNumberProfile],
                               novel_only: bool = True, clones: Optional[Set[str]] = None, present_only: bool = True) -> List[Adjacency]:
     result = adjacencies

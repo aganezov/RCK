@@ -405,6 +405,27 @@ class MultiChrDelRearrangement(Rearrangement):
         return cls(self_id=self_id, target=rearr_target, result=rearr_result)
 
 
+class SNPRearrangement(Rearrangement):
+    def __init__(self, self_id, target: RearrangementTarget, result: RearrangementResult):
+        super().__init__(self_id, target, result)
+
+    @classmethod
+    def const(cls, self_id: str, chr_name: str, location: int, target_chr_type: ChromosomeType, snp_id: Optional[str] = None, snp_id_prefix: str = "SNP"):
+        rearr_chr_target = RearrangementChrTarget(chr_name=chr_name, breakage_coordinates=[location, location + 1])
+        rearr_target = RearrangementTarget([rearr_chr_target])
+        oriented_segments: List[Union[OrientedIndexedSegment, InsertedSeq]] = [OrientedIndexedSegment(0, Strand.FORWARD)]
+        if snp_id is None:
+            snp_id = snp_id_prefix + str(random.randint(0, 100000))
+        snp = InsertedSeq.from_string(f"{snp_id}:A:1-2")
+        oriented_segments.append(snp)
+        oriented_segments.append(OrientedIndexedSegment(1, Strand.FORWARD))
+        if target_chr_type == ChromosomeType.LINEAR:
+            oriented_segments.append(OrientedIndexedSegment(2, Strand.FORWARD))
+        rearr_chr_result = RearrangementChrResult(oriented_segments, chr_type=target_chr_type)
+        rearr_result = RearrangementResult([rearr_chr_result])
+        return cls(self_id=self_id, target=rearr_target, result=rearr_result)
+
+
 class InsRearrangement(Rearrangement):
     def __init__(self, self_id, target: RearrangementTarget, result: RearrangementResult):
         super().__init__(self_id, target, result)

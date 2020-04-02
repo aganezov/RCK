@@ -477,6 +477,10 @@ class InsertedSeq(Segment):
     pass
 
 
+class SNP(Segment):
+    pass
+
+
 class AdjacencyType(Enum):
     REFERENCE = "R"
     NOVEL = "N"
@@ -744,6 +748,25 @@ class Chromosome(object):
         if self.chr_type == ChromosomeType.LINEAR:
             yield self.segments[0].start_position
             yield self.segments[-1].end_position
+
+    def get_homologous_copy(self, hom_insertions: bool = False, hom_snps: bool = False, chr_name: Optional[str] = None) -> "Chromosome":
+        result_segments = []
+        current_haplotypes = set()
+        for s in self.segments:
+            current_haplotypes.add(s.haplotype)
+            if len(current_haplotypes) > 1:
+                raise ValueError(f"Trying to create another haplotype for chromosome, and more than on haplotype is present among segments in it")
+            diploid_copy: Segment = deepcopy(s)
+            make_homologous = True
+            if isinstance(diploid_copy, InsertedSeq):
+                make_homologous = hom_insertions
+            elif isinstance(diploid_copy, SNP):
+                make_homologous = hom_snps
+            if make_homologous:
+                diploid_copy.extra[HAPLOTYPE] = Haplotype.B if Haplotype.A in current_haplotypes else Haplotype.A
+            result_segments.append(diploid_copy)
+        chr_name = chr_name if chr_name else self.name + str(result_segments[0].haplotype)
+        return Chromosome(chr_name=chr_name, segments=result_segments, chr_type=self.chr_type)
 
 
 class Genome(object):

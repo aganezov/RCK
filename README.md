@@ -95,6 +95,7 @@ Obtaining unlabeled (i.e., without allele-information) novel adjacencies (aka St
 We provide a `rck-adj-x2rck` utility to convert output from output format of SV detection tools to the RCK suitable format. 
 We currently support converting the output of the following 3rd-party SV detection tools: 
 * *short-reads*
+    * **SvABA** (formerly snowman) [[paper](https://genome.cshlp.org/content/28/4/581.full.html) | [code](https://github.com/walaj/svaba)]
     * **Delly** [[paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3436805/) | [code](https://github.com/dellytools/delly)] 
     * **Manta** [[paper](https://www.ncbi.nlm.nih.gov/pubmed/26647377) | [code](https://github.com/Illumina/manta)] 
     * **Lumpy** [[paper](https://genomebiology.biomedcentral.com/articles/10.1186/gb-2014-15-6-r84) | [code](https://github.com/arq5x/lumpy-sv)]
